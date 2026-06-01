@@ -134,3 +134,9 @@ This file is append-only. Add new entries at the end with UTC timestamps, actor,
 - Claude and three read-only MCP/subagent audits second-checked the Codex commit window. Blocking findings were fixed before staging: Telegram Bot API errors no longer stringify token-bearing URLs, Telegram allowlists fail closed, polling retries transient failures, Telegram update offsets persist locally before dispatch, Jeryu port `8799` is protected everywhere, and `stop-jmcp-dev.sh` now uses exact repo/cockpit path boundaries.
 - `telegram.env` was set to mode `600` and remains ignored; `jmcp.telegram.offset` was added to `.gitignore`.
 - Local proof run before commit: `cargo check --workspace --all-targets --locked`, `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, cockpit `typecheck`/`test`/`build`, `scripts/verify-jmcp-env.sh`, `scripts/dev/stop-jmcp-dev.sh --dry-run`, protected-port negative checks for `8799`, `just jankurai-local`, `just ci`, `just fast`, and `git diff --check`.
+
+## 2026-06-01T19:25:48Z - Codex - COMMIT WINDOW CLEAR
+
+- **COMMIT WINDOW CLEAR — Codex.**
+- Pushed `251c05c` (`Harden Telegram runtime and Jeryu port safety`) to `origin/main`.
+- GitHub Actions for `251c05c` are green: Security `26776795556` succeeded, CI `26776795598` succeeded. Local and remote parity held for the commit window.
