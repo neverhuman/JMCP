@@ -40,5 +40,5 @@
 - `AGENT_CHAT.md` is append-only and is the source of truth for claims, handoffs, proof, and blockers.
 - Codex owns integration by default. Claude starts read-only unless a later `AGENT_CHAT.md` entry grants a path-specific edit lease.
 - No two agents edit the same path at the same time. A handoff entry must name the paths, allowed commands, and expected proof before ownership changes.
-- Jeryu-sensitive ports are protected for coexistence work: `2224`, `8787`, `8929`, `18787`, `18788`, and `19800`.
+- Jeryu-sensitive ports are protected for coexistence work: `2224`, `8787`, `8799`, `8929`, `18787`, `18788`, and `19800`.
 - JMCP defaults must remain outside those ports: API `127.0.0.1:18877`, client URL `http://127.0.0.1:18877`, cockpit dev `127.0.0.1:15873`.

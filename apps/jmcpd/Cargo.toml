@@ -8,7 +8,10 @@ version.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
+jcp-core = { path = "../../crates/jcp-core" }
 jmcp-api = { path = "../../crates/jmcp-api" }
 jmcp-app = { path = "../../crates/jmcp-app" }
+jmcp-approval-telegram = { path = "../../crates/jmcp-approval-telegram" }
 jmcp-store = { path = "../../crates/jmcp-store" }
+serde_json.workspace = true
 tokio.workspace = true

@@ -8,7 +8,7 @@ const DEFAULT_API_URL: &str = "http://127.0.0.1:18877";
 const DEFAULT_API_BIND: &str = "127.0.0.1:18877";
 const DEFAULT_COCKPIT_HOST: &str = "127.0.0.1";
 const DEFAULT_COCKPIT_PORT: u16 = 15873;
-const JERYU_PROTECTED_PORTS: &[u16] = &[2224, 8787, 8929, 18787, 18788, 19800];
+const JERYU_PROTECTED_PORTS: &[u16] = &[2224, 8787, 8799, 8929, 18787, 18788, 19800];
 
 #[derive(Debug, Parser)]
 struct Args {

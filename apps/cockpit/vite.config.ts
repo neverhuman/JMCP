@@ -12,9 +12,9 @@ export default defineConfig(({ mode }) => {
   if (safePort > 65535) {
     throw new Error(`JMCP_COCKPIT_PORT is outside the valid TCP port range: ${portValue}`);
   }
-  const protectedPorts = [2224, 8787, 8929, 18787, 18788, 19800];
+  const protectedPorts = [2224, 8787, 8799, 8929, 18787, 18788, 19800];
 
-  if (protectedPorts.includes(safePort)) {
+  if (protectedPorts.some((port) => port === safePort)) {
     throw new Error(`JMCP_COCKPIT_PORT must not use Jeryu protected port ${safePort}`);
   }
 

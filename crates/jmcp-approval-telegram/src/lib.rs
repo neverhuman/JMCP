@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 use jmcp_domain::ApprovalDecision;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, path::Path};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -15,6 +17,224 @@ pub struct TelegramApprovalChallenge {
 pub struct TelegramApprovalMessage {
     pub user_id: i64,
     pub text: String,
+}
+
+#[derive(Clone)]
+pub struct TelegramConfig {
+    token: String,
+    pub api_base: String,
+    pub allowed_user_ids: HashSet<i64>,
+    pub allowed_chat_ids: HashSet<i64>,
+}
+
+impl std::fmt::Debug for TelegramConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TelegramConfig")
+            .field("token", &"<redacted>")
+            .field("api_base", &self.api_base)
+            .field("allowed_user_ids", &self.allowed_user_ids)
+            .field("allowed_chat_ids", &self.allowed_chat_ids)
+            .finish()
+    }
+}
+
+impl TelegramConfig {
+    pub fn from_env_file(path: impl AsRef<Path>) -> Result<Self, TelegramApprovalError> {
+        let mut contents =
+            std::fs::read_to_string(path).map_err(|_| TelegramApprovalError::TokenLoadFailed)?;
+        append_env_override(&mut contents, "JMCP_TELEGRAM_BOT_TOKEN");
+        append_env_override(&mut contents, "TELEGRAM_BOT_TOKEN");
+        append_env_override(&mut contents, "BOT_TOKEN");
+        append_env_override(&mut contents, "JMCP_TELEGRAM_API_BASE");
+        append_env_override(&mut contents, "TELEGRAM_API_BASE");
+        append_env_override(&mut contents, "JMCP_TELEGRAM_ALLOWED_USER_IDS");
+        append_env_override(&mut contents, "TELEGRAM_ALLOWED_USER_IDS");
+        append_env_override(&mut contents, "JMCP_TELEGRAM_ALLOWED_CHAT_IDS");
+        append_env_override(&mut contents, "TELEGRAM_ALLOWED_CHAT_IDS");
+        Self::from_env_contents(&contents)
+    }
+
+    pub fn from_env_contents(contents: &str) -> Result<Self, TelegramApprovalError> {
+        let mut token = None;
+        let mut api_base = None;
+        let mut allowed_user_ids = HashSet::new();
+        let mut allowed_chat_ids = HashSet::new();
+
+        for raw_line in contents.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                match key.trim() {
+                    "TELEGRAM_BOT_TOKEN" | "BOT_TOKEN" | "JMCP_TELEGRAM_BOT_TOKEN" => {
+                        token = Some(value.to_owned());
+                    }
+                    "TELEGRAM_API_BASE" | "JMCP_TELEGRAM_API_BASE" => {
+                        api_base = Some(value.trim_end_matches('/').to_owned());
+                    }
+                    "TELEGRAM_ALLOWED_USER_IDS" | "JMCP_TELEGRAM_ALLOWED_USER_IDS" => {
+                        allowed_user_ids.extend(parse_id_list(value)?);
+                    }
+                    "TELEGRAM_ALLOWED_CHAT_IDS" | "JMCP_TELEGRAM_ALLOWED_CHAT_IDS" => {
+                        allowed_chat_ids.extend(parse_id_list(value)?);
+                    }
+                    _ => {}
+                }
+            } else if token.is_none() {
+                token = Some(line.to_owned());
+            }
+        }
+
+        let token = token
+            .filter(|value| !value.is_empty())
+            .ok_or(TelegramApprovalError::MissingToken)?;
+        if allowed_user_ids.is_empty() && allowed_chat_ids.is_empty() {
+            return Err(TelegramApprovalError::MissingAllowlist);
+        }
+        Ok(Self {
+            token,
+            api_base: api_base.unwrap_or_else(|| "https://api.telegram.org".to_owned()),
+            allowed_user_ids,
+            allowed_chat_ids,
+        })
+    }
+
+    fn method_url(&self, method: &str) -> String {
+        format!("{}/bot{}/{}", self.api_base, self.token, method)
+    }
+
+    pub fn is_allowed(&self, user_id: i64, chat_id: i64) -> bool {
+        if self.allowed_user_ids.is_empty() && self.allowed_chat_ids.is_empty() {
+            return false;
+        }
+        (self.allowed_user_ids.is_empty() || self.allowed_user_ids.contains(&user_id))
+            && (self.allowed_chat_ids.is_empty() || self.allowed_chat_ids.contains(&chat_id))
+    }
+}
+
+pub struct TelegramBotClient {
+    config: TelegramConfig,
+    http: reqwest::Client,
+}
+
+impl TelegramBotClient {
+    pub fn new(config: TelegramConfig) -> Self {
+        Self {
+            config,
+            http: reqwest::Client::new(),
+        }
+    }
+
+    pub async fn get_me(&self) -> Result<TelegramUser, TelegramApprovalError> {
+        self.post::<_, TelegramUser>("getMe", &serde_json::json!({}))
+            .await
+    }
+
+    pub async fn get_updates(
+        &self,
+        offset: Option<i64>,
+        timeout_seconds: u64,
+    ) -> Result<Vec<TelegramUpdate>, TelegramApprovalError> {
+        self.post::<_, Vec<TelegramUpdate>>(
+            "getUpdates",
+            &serde_json::json!({
+                "offset": offset,
+                "timeout": timeout_seconds,
+                "allowed_updates": ["message"],
+            }),
+        )
+        .await
+    }
+
+    pub async fn send_message(
+        &self,
+        chat_id: i64,
+        text: &str,
+    ) -> Result<TelegramMessage, TelegramApprovalError> {
+        self.post::<_, TelegramMessage>(
+            "sendMessage",
+            &serde_json::json!({
+                "chat_id": chat_id,
+                "text": text,
+                "disable_web_page_preview": true,
+            }),
+        )
+        .await
+    }
+
+    pub fn config(&self) -> &TelegramConfig {
+        &self.config
+    }
+
+    async fn post<T, R>(&self, method: &str, payload: &T) -> Result<R, TelegramApprovalError>
+    where
+        T: Serialize + ?Sized,
+        R: for<'de> Deserialize<'de>,
+    {
+        let response = self
+            .http
+            .post(self.config.method_url(method))
+            .json(payload)
+            .send()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("request failed".to_owned()))?;
+        let envelope: TelegramApiResponse<R> = response
+            .json()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("decode failed".to_owned()))?;
+        if envelope.ok {
+            envelope
+                .result
+                .ok_or(TelegramApprovalError::MalformedResponse)
+        } else {
+            Err(TelegramApprovalError::ApiRejected(
+                envelope
+                    .description
+                    .unwrap_or_else(|| "telegram api rejected request".to_owned()),
+            ))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TelegramUpdate {
+    pub update_id: i64,
+    pub message: Option<TelegramMessage>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TelegramMessage {
+    pub message_id: i64,
+    pub from: Option<TelegramUser>,
+    pub chat: TelegramChat,
+    pub text: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TelegramUser {
+    pub id: i64,
+    #[serde(default)]
+    pub is_bot: bool,
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default)]
+    pub username: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TelegramChat {
+    pub id: i64,
+    #[serde(rename = "type")]
+    pub kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TelegramApiResponse<T> {
+    ok: bool,
+    result: Option<T>,
+    description: Option<String>,
 }
 
 /// An already-transcribed voice note approval. The audio download and
@@ -51,6 +271,41 @@ pub enum TelegramApprovalError {
     LowConfidence,
     #[error("high-risk voice approval requires spoken confirmation token")]
     ConfirmationRequired,
+    #[error("telegram token file could not be loaded")]
+    TokenLoadFailed,
+    #[error("telegram token missing")]
+    MissingToken,
+    #[error("telegram allowlist missing")]
+    MissingAllowlist,
+    #[error("invalid telegram allowlist id")]
+    InvalidAllowlist,
+    #[error("telegram api request failed: {0}")]
+    Api(String),
+    #[error("telegram api rejected request: {0}")]
+    ApiRejected(String),
+    #[error("telegram api response malformed")]
+    MalformedResponse,
+}
+
+fn parse_id_list(value: &str) -> Result<Vec<i64>, TelegramApprovalError> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse()
+                .map_err(|_| TelegramApprovalError::InvalidAllowlist)
+        })
+        .collect()
+}
+
+fn append_env_override(contents: &mut String, key: &str) {
+    if let Ok(value) = std::env::var(key) {
+        contents.push('\n');
+        contents.push_str(key);
+        contents.push('=');
+        contents.push_str(&value);
+    }
 }
 
 pub fn render_prompt(challenge: &TelegramApprovalChallenge) -> String {
@@ -327,6 +582,27 @@ mod tests {
             parse_voice_reply(&c, &v, Utc::now()).unwrap(),
             ApprovalDecision::Rejected
         );
+    }
+
+    #[test]
+    fn config_parses_token_and_allowlists_without_exposing_secret() {
+        let config = TelegramConfig::from_env_contents(
+            "TELEGRAM_BOT_TOKEN=123:secret\nJMCP_TELEGRAM_API_BASE=http://localhost:8081\nJMCP_TELEGRAM_ALLOWED_USER_IDS=42, 43\nJMCP_TELEGRAM_ALLOWED_CHAT_IDS=-100\n",
+        )
+        .unwrap();
+
+        assert_eq!(config.api_base, "http://localhost:8081");
+        assert!(config.is_allowed(42, -100));
+        assert!(!config.is_allowed(7, -100));
+        assert!(!format!("{config:?}").contains("123:secret"));
+    }
+
+    #[test]
+    fn config_rejects_raw_token_file_without_allowlist() {
+        assert!(matches!(
+            TelegramConfig::from_env_contents("123:secret\n"),
+            Err(TelegramApprovalError::MissingAllowlist)
+        ));
     }
 
     #[test]
