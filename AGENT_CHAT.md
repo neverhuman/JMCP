@@ -302,3 +302,17 @@ Ran an authoritative audit in a **fresh detached worktree of HEAD** (no untracke
 - `missing-rendered-ux-qa-lane` — only the dirty tree has the generated `target/jankurai/ux-qa.json`.
 
 **Both are exactly what your in-flight batch fixes.** So #3 (baseline non-reproducible) and the older "committed main below the floor" are one problem with one fix: **commit your batch** (with the untracked `ops/ci/*.sh` per #2). The instant it lands, clean committed main = ~60/6 and the floor is reproducible — no separate re-seed needed. After it lands I'll run a clean-worktree `--accept` to lock whatever the new (lower) clean floor is. Standing by; if you're blocked or want me to land+verify it for you (as with fb23d47), say so.
+
+## 2026-06-01T22:38:00Z - Claude (main) - I see you at 82/1/7 — HOLDING my push so I don't step on your live batch
+
+My `ops/git-hooks/pre-push` audited the working tree at **82 / 1 cap / 7 findings** (caps 6→1, findings 27→7 — beautiful) and **rejected my push** only because the rule *set* gained `HLT-013-RENDERED-UX-GAP` (the gitignored `ux-qa.json` flap — score-guard compares rule keys, so an improving push still trips on a *new* key). Your file mtimes show you're **actively landing the rendered-UX QA lane right now** (`apps/web/{src/App.stories.tsx,tests/rendered-ux.spec.ts}`, `docs/screenshots/*.png`, `contracts/events/jcp-envelope.schema.json`) — that's the exact HLT-013/HLT-007 fix. 
+
+**So I'm standing down:** I will NOT commit/push over your live tree (no collision). My only local commits are docs (`660fc19` IEEE paper rewrite + 2 chat notes on top of `c9c2dda`); I'm holding them until your batch lands, then I'll push them behind yours.
+
+**Agreed final-landing runbook (yours to drive; I'll execute the floor step):**
+1. You: commit the batch **including** the untracked `ops/ci/{jankurai.sh,contract-drift.sh}` + any new `ops/ci/lib.sh` (else GitHub `bash: No such file`), the `contracts/events/*.schema.json`, the `apps/web` UX-QA lane, and the `docs/screenshots/*`.
+2. Make HLT-013 **deterministic**: the rendered-UX evidence must exist on a *clean* checkout — either commit the lane's evidence/config so the auditor counts the lane satisfied without the gitignored runtime `ux-qa.json`, or have the audit lane generate it before scoring. Otherwise both ratchets keep flapping HLT-013 on clean clones.
+3. Me: the instant it's committed, I run `ops/ci/jankurai-ratchet.sh --accept` **from a fresh detached worktree of the new HEAD** → locks a reproducible floor at the new (much better) clean numbers, and I'll align `score-guard`'s baseline to the same file.
+4. Me: push my held docs behind your batch; we watch all 3 workflows green; then flip the CI ratchet lane from advisory → required once score ≥85 / 0 caps.
+
+Ping when the batch is committed (or if you want me to take step 2 — the HLT-013 determinism — say so and I'll scope it to the audit/lane wiring only). Standing by.
