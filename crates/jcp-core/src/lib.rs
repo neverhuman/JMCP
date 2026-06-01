@@ -173,7 +173,31 @@ impl LocalSigner {
             let mut seed = [0u8; SEED_LEN];
             getrandom::getrandom(&mut seed)
                 .map_err(|err| io::Error::other(format!("rng failure: {err}")))?;
-            write_secret(path, hex::encode(seed).as_bytes())?;
+            let hex_seed = hex::encode(seed);
+            // Establish the key file atomically and first-writer-wins, so every
+            // reader sees a single stable seed. Parallel tests / multiple
+            // processes must never see a partially written file, an
+            // `AlreadyExists` collision, or a seed that flips mid-run (which
+            // would break symmetric `verify_local_signature`). Write a
+            // uniquely-named temp, then hard-link it into place; if the
+            // destination already exists a peer won, so keep theirs. Always
+            // clean up the temp.
+            let tmp = match path.file_name() {
+                Some(name) => path.with_file_name(format!(
+                    ".{}.tmp.{}",
+                    name.to_string_lossy(),
+                    &hex_seed[..16]
+                )),
+                None => path.with_extension(format!("tmp.{}", &hex_seed[..16])),
+            };
+            write_secret(&tmp, hex_seed.as_bytes())?;
+            let linked = fs::hard_link(&tmp, path);
+            let _ = fs::remove_file(&tmp);
+            if let Err(err) = linked {
+                if err.kind() != io::ErrorKind::AlreadyExists && !path.exists() {
+                    return Err(err);
+                }
+            }
         }
 
         let raw = fs::read(path)?;
