@@ -17,6 +17,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 
+mod worker_run;
+pub use worker_run::map_worker_outcome;
+
 const DEFAULT_JEKKO_BASE_URL: &str = "http://127.0.0.1:4317";
 const DEFAULT_JNOCCIO_BASE_URL: &str = "http://127.0.0.1:8765";
 const DEFAULT_MODEL: &str = "jnoccio/jnoccio-fusion";
@@ -60,8 +63,11 @@ pub struct JekkoRunOutcome {
 pub trait JekkoClient: Send + Sync {
     /// Liveness probe for the worker engine.
     async fn health(&self) -> Result<()>;
-    /// Execute a single run and return its normalized outcome.
+    /// Execute a single fusion-chat reasoning run and return its outcome.
     async fn run(&self, request: JekkoRunRequest) -> Result<JekkoRunOutcome>;
+    /// Drive the jnoccio-router `worker_run` autonomous worker (reads/edits a
+    /// repo, reports concrete file changes) and return its normalized outcome.
+    async fn worker_run(&self, request: JekkoRunRequest) -> Result<JekkoRunOutcome>;
 }
 
 /// HTTP client driving Jekko (`:4317`) and jnoccio-fusion (`/v1/chat/completions`).
@@ -70,10 +76,10 @@ pub trait JekkoClient: Send + Sync {
 /// never logged. See [`HttpJekkoClient::from_env`].
 #[derive(Clone)]
 pub struct HttpJekkoClient {
-    http: reqwest::Client,
-    jekko_base_url: String,
-    jnoccio_base_url: String,
-    api_key: Option<String>,
+    pub(crate) http: reqwest::Client,
+    pub(crate) jekko_base_url: String,
+    pub(crate) jnoccio_base_url: String,
+    pub(crate) api_key: Option<String>,
 }
 
 impl HttpJekkoClient {
@@ -155,6 +161,12 @@ impl JekkoClient for HttpJekkoClient {
             error: None,
         })
     }
+
+    async fn worker_run(&self, request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
+        // The autonomous worker path lives in `worker_run.rs`; it builds the
+        // JSON-RPC `tools/call` against the router from this client's fields.
+        worker_run::run_worker(self, request).await
+    }
 }
 
 #[derive(Serialize)]
@@ -231,9 +243,8 @@ impl Adapter for JekkoAdapter {
     }
 
     async fn execute(&self, work_order: &WorkOrder) -> Result<Vec<Evidence>> {
-        if !is_worker_kind(&work_order.task.kind) {
-            return Err(fail_closed("jekko"));
-        }
+        let kind = work_order.task.kind.as_str();
+        let route = route_for(kind).ok_or_else(|| fail_closed("jekko"))?;
         let request = JekkoRunRequest {
             prompt: prompt_for(work_order),
             cwd: work_order
@@ -245,7 +256,12 @@ impl Adapter for JekkoAdapter {
                 .to_owned(),
             model: self.model.clone(),
         };
-        let outcome = self.client.run(request).await?;
+        // Worker kinds drive the autonomous jnoccio-router `worker_run` path;
+        // the `reason` kind keeps the fusion-chat reasoning path.
+        let outcome = match route {
+            Route::Worker => self.client.worker_run(request).await?,
+            Route::Reason => self.client.run(request).await?,
+        };
         if !outcome.success {
             anyhow::bail!(
                 "jekko run failed: {}",
@@ -256,11 +272,20 @@ impl Adapter for JekkoAdapter {
     }
 }
 
-fn is_worker_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "jekko.run" | "jekko.task" | "run" | "worker" | "reason"
-    )
+/// Which jnoccio surface a work-order kind is dispatched to.
+enum Route {
+    /// Autonomous jnoccio-router `worker_run` (reads/edits a repo).
+    Worker,
+    /// jnoccio-fusion OpenAI-compatible chat reasoning.
+    Reason,
+}
+
+fn route_for(kind: &str) -> Option<Route> {
+    match kind {
+        "jekko.run" | "jekko.task" | "run" | "worker" => Some(Route::Worker),
+        "reason" => Some(Route::Reason),
+        _ => None,
+    }
 }
 
 fn prompt_for(work_order: &WorkOrder) -> String {
@@ -330,6 +355,10 @@ mod tests {
         async fn run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
             Ok(self.outcome.clone())
         }
+
+        async fn worker_run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
+            Ok(self.outcome.clone())
+        }
     }
 
     struct DownClient;
@@ -341,6 +370,10 @@ mod tests {
         }
 
         async fn run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
+            anyhow::bail!("engine unreachable")
+        }
+
+        async fn worker_run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
             anyhow::bail!("engine unreachable")
         }
     }
@@ -408,5 +441,52 @@ mod tests {
         let card = JekkoAdapter::default().service_card();
         assert_eq!(card.name, "jekko");
         assert!(card.capabilities.iter().any(|c| c == "jnoccio-router"));
+    }
+
+    /// Records which client method the adapter dispatched to, so routing of a
+    /// work-order kind to the worker vs. reasoning path is verified directly.
+    struct RouteRecordingClient {
+        last: std::sync::Mutex<&'static str>,
+    }
+
+    #[async_trait]
+    impl JekkoClient for RouteRecordingClient {
+        async fn health(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
+            *self.last.lock().unwrap() = "run";
+            Ok(ok_outcome())
+        }
+
+        async fn worker_run(&self, _request: JekkoRunRequest) -> Result<JekkoRunOutcome> {
+            *self.last.lock().unwrap() = "worker_run";
+            Ok(ok_outcome())
+        }
+    }
+
+    #[tokio::test]
+    async fn worker_kinds_route_to_worker_run() {
+        for kind in ["jekko.run", "jekko.task", "run", "worker"] {
+            let client = Arc::new(RouteRecordingClient {
+                last: std::sync::Mutex::new("none"),
+            });
+            let adapter = JekkoAdapter::new(client.clone(), "m");
+            let work_order = WorkOrder::submit("t/jekko/e", kind, json!({"prompt": "x"}));
+            adapter.execute(&work_order).await.unwrap();
+            assert_eq!(*client.last.lock().unwrap(), "worker_run", "kind {kind}");
+        }
+    }
+
+    #[tokio::test]
+    async fn reason_kind_routes_to_fusion_run() {
+        let client = Arc::new(RouteRecordingClient {
+            last: std::sync::Mutex::new("none"),
+        });
+        let adapter = JekkoAdapter::new(client.clone(), "m");
+        let work_order = WorkOrder::submit("t/jekko/e", "reason", json!({"prompt": "x"}));
+        adapter.execute(&work_order).await.unwrap();
+        assert_eq!(*client.last.lock().unwrap(), "run");
     }
 }
