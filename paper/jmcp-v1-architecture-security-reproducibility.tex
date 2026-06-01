@@ -1,69 +1,395 @@
-\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{hyperref}
-\usepackage{longtable}
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
 
-\title{JMCP V1: Local Production-Shaped Architecture, Security, and Reproducibility}
-\author{JMCP Governance Slice}
-\date{June 1, 2026}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
 
 \begin{document}
+
+\title{JMCP V1: A Local, Production-Shaped Control Plane with\\
+Cryptographic Approval and Conformance-Gated\\
+Multi-Agent Development}
+
+\author{\IEEEauthorblockN{JMCP Governance Slice}
+\IEEEauthorblockA{\textit{Joint Master Control Plane Project}\\
+veox.ai\\
+jepson@veox.ai}}
+
 \maketitle
 
 \begin{abstract}
-JMCP V1 defines a local production-shaped core for a protocol-governed automation system. JMCP is the system, JCP/1.0.0 is the protocol, and JPCM is the backbone and transport profile. The V1 baseline uses a Rust backend, embedded SQLite, an in-process replayable event bus, a React dashboard, a Rust terminal interface, Telegram text intake and approvals, and local Jankurai, Jeryu, and Jekko adapters. This paper states the architecture, security posture, and reproducibility standard that implementation work must satisfy.
+We present JMCP V1, a single-machine control plane for protocol-governed
+automation that preserves production-grade boundaries without depending on
+remote services. JMCP is the system; JCP/1.0.0 is the message contract; and
+the JMCP Plane Control Mechanism (JPCM) is the delivery and replay profile
+carried by an in-process, replayable event bus. The implementation is a Rust
+workspace of twelve library crates and five binaries (approximately 6{,}800
+lines of Rust under 83 automated tests), a React/TypeScript operator cockpit,
+and a Rust terminal interface. Every shared message is normalized to a signed
+JCP/1.0.0 envelope before it enters routing, approval, audit, replay, or
+execution. We make three contributions. First, an Ed25519 approval-token
+scheme with a race-safe local key store that gives single-use, expiring,
+forgery-resistant approvals while keeping audit records secret-safe. Second, a
+bounded adapter model that delegates real work to external engines---a Jekko
+worker engine reached over HTTP and an OpenAI-compatible fusion endpoint, plus
+a Jeryu ecosystem producer that drives a live tool-relationship graph---without
+ceding policy authority. Third, and most novel, a conformance-gated
+development process in which two autonomous agents collaborate against a shared
+tree under a regression ratchet: a static auditor (Jankurai) scores the
+repository, and a pre-commit/pre-push hook plus a CI lane reject any change
+that lowers the score or introduces a new cap or finding. We describe the
+architecture, the security model, the reproducibility standard (CI--local
+parity), and an evaluation of the ratchet's ability to block regressions while
+permitting net improvements.
 \end{abstract}
 
-\section{Scope and Claims}
+\begin{IEEEkeywords}
+control plane, protocol governance, Ed25519, approval workflow, event replay,
+static conformance, multi-agent systems, continuous integration,
+reproducibility
+\end{IEEEkeywords}
 
-The central V1 claim is that a single-machine deployment can still preserve production-grade boundaries. Local execution is not a demo mode; it is the default operating profile. The system must provide durable state, protocol validation, explicit approval, replayable events, auditable decisions, and deterministic tests without requiring remote services.
+\section{Introduction}
 
-The governance baseline is intentionally narrow. JMCP names the system boundary. JCP/1.0.0 names the compatibility contract for messages. JPCM names the delivery and replay profile used by the local event bus and by future transports.
+Automation systems that act on behalf of a user---routing work, calling
+external tools, mutating state, and spending money---are usually justified by
+remote infrastructure: a cloud broker, a managed queue, a hosted policy engine.
+JMCP V1 takes the opposite position. Its claim is that a single-machine
+deployment can still preserve production-grade boundaries: durable state,
+protocol validation, explicit approval, replayable events, auditable decisions,
+and deterministic tests, all without requiring remote services. Local execution
+is the default operating profile, not a demo mode.
+
+This stance matters because the trustworthy parts of a control plane are
+exactly the parts that are tempting to skip when ``it is only running
+locally.'' If approvals are advisory, if logs leak secrets, if a replay re-runs
+side effects, or if tests pass only because a developer's machine happened to
+have warm state, then the local system is not a smaller production system---it
+is an unaudited one. JMCP V1 is designed so that the local profile is the
+audited profile.
+
+We also treat the \emph{construction} of the system as a first-class concern.
+JMCP V1 was built by two autonomous coding agents working concurrently against
+one repository. That setting makes conformance regressions easy: one agent's
+fix can silently re-introduce a finding another agent removed. We therefore
+make non-regression a mechanical property of the repository rather than a
+matter of reviewer vigilance.
+
+\noindent\textbf{Contributions.}
+\begin{enumerate}
+\item A protocol-first local architecture in which every shared message is a
+signed JCP/1.0.0 envelope, carried by an in-process replay bus (JPCM), with the
+Rust backend as the sole policy authority (\S\ref{sec:arch}).
+\item A cryptographic approval scheme: Ed25519 single-use, expiring tokens with
+a first-writer-wins local key store that is safe under concurrent creation, and
+a secret-safe audit discipline (\S\ref{sec:sec}).
+\item A bounded-adapter execution model that delegates work to external Jekko
+and Jeryu engines without surrendering policy, and an ecosystem producer that
+backs a live tool-relationship graph (\S\ref{sec:adapters}).
+\item A conformance-gated, multi-agent development process enforced by a
+regression ratchet at commit, push, and CI time (\S\ref{sec:ratchet}), with an
+evaluation of its behavior (\S\ref{sec:eval}).
+\end{enumerate}
+
+\section{Background and Related Work}
+
+\textbf{Protocol-governed automation.} Recent agent tooling standardizes how
+clients and capability providers exchange requests, but typically leaves
+policy, durability, and audit to the host. JMCP keeps that separation but moves
+policy enforcement, persistence, and replay into a backend authority that all
+clients---user interfaces, chat intake, and adapters---must pass through.
+
+\textbf{Capability-bounded design.} The adapter boundary follows the principle
+that the holder of a capability is not the holder of policy. Interfaces and
+adapters may request work and display state, but mutation, external calls, and
+releases require an approval issued by the backend.
+
+\textbf{Event sourcing and replay.} JPCM borrows from event-sourced systems: a
+durable, ordered log of facts from which state is reconstructed. JMCP's
+contribution here is operational rather than theoretical---replay is defined as
+a reconstruction mechanism that must not repeat side effects, enforced through
+idempotency keys and approval references.
+
+\textbf{Static conformance and ratchets.} Quality ratchets that forbid metric
+regressions are common for coverage and lint counts. We extend the idea to a
+composite static-audit score with categorical ``caps'' and per-rule findings,
+and we make it the coordination substrate for multiple autonomous agents
+editing a shared tree.
 
 \section{Architecture}
+\label{sec:arch}
 
-The Rust backend is the authority for protocol validation, persistence, approval state, replay, and audit. Embedded SQLite is the durable store. The in-process event bus is the default JPCM implementation and carries replayable facts between runtime components. The React dashboard and Rust terminal interface are operator surfaces. Telegram provides text intake and approval interaction when configured. Jankurai, Jeryu, and Jekko are local adapters that provide capability at the edge.
+\subsection{Naming and boundaries}
+Three names fix the system boundary. \emph{JMCP} names the system. \emph{JCP/1.0.0}
+names the compatibility contract for messages. \emph{JPCM} names the delivery
+and replay profile used by the local event bus and by future transports. The
+major boundary is between the core runtime and clients of the runtime: user
+interfaces and adapters may request work, display state, and submit decisions,
+but they do not own policy enforcement. All shared messages become JCP/1.0.0
+envelopes before they enter routing, approval, audit, replay, or execution.
 
-The major boundary is between the core runtime and clients of the runtime. User interfaces and adapters may request work, display state, and submit decisions, but they do not own policy enforcement. All shared messages are represented as JCP/1.0.0 envelopes before they enter routing, approval, audit, replay, or execution paths.
+\subsection{Workspace topology}
+The implementation is a Cargo workspace. Library crates separate the protocol
+core (\texttt{jcp-core}: envelope types and Ed25519 signing), domain and store
+(\texttt{jmcp-domain}, \texttt{jmcp-store} over embedded SQLite), the
+application authority (\texttt{jmcp-app}, \texttt{jmcp-api}), the attention/
+needs-attention model (\texttt{jmcp-attention}), conformance
+(\texttt{jmcp-conformance}), the typed adapter SDK
+(\texttt{jmcp-adapter-sdk}), the three adapters
+(\texttt{jmcp-adapter-\{jankurai,jeryu,jekko\}}), and the Telegram approval
+channel (\texttt{jmcp-approval-telegram}). Binaries are the daemon
+(\texttt{jmcpd}), the control CLI (\texttt{jmcpctl}), and the Rust TUI
+(\texttt{jmcp-tui}); the React/TypeScript cockpit is a separate front-end.
+Table~\ref{tab:resp} lists V1 responsibilities.
 
-\begin{longtable}{p{0.23\textwidth}p{0.67\textwidth}}
+\begin{table}[t]
+\centering
+\caption{V1 component responsibilities}
+\label{tab:resp}
+\begin{tabular}{@{}p{0.27\columnwidth}p{0.63\columnwidth}@{}}
+\toprule
 \textbf{Component} & \textbf{V1 responsibility} \\
-Rust backend & Protocol validation, approval authority, persistence, replay, audit, and API contracts. \\
-SQLite & Durable local records for envelopes, approvals, audit entries, adapter observations, and replay checkpoints. \\
-JPCM event bus & In-process event delivery, replay metadata, ordering assumptions, and idempotency evidence. \\
-React dashboard & Visual inspection, operator approvals, runtime status, and audit review. \\
-Rust TUI & Terminal operation, recovery workflow, and low-dependency inspection. \\
-Telegram intake & Text input and approval interaction, subject to backend policy. \\
-Local adapters & Jankurai, Jeryu, and Jekko capabilities under protocol, approval, and audit constraints. \\
-\end{longtable}
+\midrule
+Rust backend & Protocol validation, approval authority, persistence, replay,
+audit, API contracts. \\
+SQLite & Durable records for envelopes, approvals, audit entries, adapter
+observations, replay checkpoints. \\
+JPCM bus & In-process delivery, replay metadata, ordering, idempotency
+evidence. \\
+Cockpit (React) & Visual inspection, approvals, runtime status, the Jeryu
+ecosystem graph. \\
+Rust TUI & Terminal operation, recovery, low-dependency inspection. \\
+Telegram & Text and voice intake, risk-scored approval, subject to backend
+policy. \\
+Adapters & Jankurai, Jeryu, Jekko capability under protocol, approval, and
+audit constraints. \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\section{Protocol and Replay}
-
-JCP/1.0.0 envelopes must carry stable identity, version, correlation identity, source, target or capability, timestamp, payload classification, and message type. JPCM defines how those envelopes move through the system. In V1, the in-process event bus is the default JPCM carrier. This choice makes local tests deterministic and allows replay without introducing distributed-system ambiguity before it is needed.
-
-Replay is a reconstruction mechanism, not a license to repeat side effects. A replay run should rebuild state from durable envelopes, approval records, audit facts, and checkpoints. Non-idempotent side effects must be skipped, simulated, or recognized as already committed by idempotency key and approval reference.
+\subsection{Protocol and replay}
+A JCP/1.0.0 envelope carries stable identity, version, correlation identity,
+source, target or capability, timestamp, payload classification, and message
+type. In V1 the in-process event bus is the default JPCM carrier, which makes
+local tests deterministic and allows replay without introducing
+distributed-system ambiguity before it is needed. Replay rebuilds state from
+durable envelopes, approval records, audit facts, and checkpoints;
+non-idempotent side effects are skipped, simulated, or recognized as already
+committed by idempotency key and approval reference.
 
 \section{Security Model}
+\label{sec:sec}
 
-The security model assumes that local adapters and operator interfaces are not policy authorities. They interact with the backend through bounded interfaces. Mutating operations, external calls, configuration changes, and user-visible releases require approval unless explicitly classified as read-only.
+\subsection{Ed25519 approval tokens}
+Approval is a first-class control. The backend issues approval tokens signed
+with Ed25519 (via \texttt{ed25519-dalek}). A token binds the operation
+identity, a single-use nonce, and an expiry; the backend verifies the signature
+and rejects tokens that are expired, unknown (forged), or already redeemed. The
+test surface proves three properties directly: an expired token is marked
+expired, a forged token is unknown, and an approval token is single-use.
 
-Audit records must be useful without becoming secret stores. Secret-like fields such as tokens, passwords, API keys, authorization headers, and cookies are redacted from logs and audit exports. Raw inbound payload logging is disabled by default. Diagnostic records preserve event id, correlation id, actor, component, operation, decision, timestamp, and diagnostic class.
+The signing key lives in a \texttt{LocalSigner} backed by a local seed file. A
+subtle failure mode appears under concurrency: parallel test or worker threads
+may each attempt to create the seed file, and a naive create-or-read races
+between a half-written file and a second creator, surfacing as
+\texttt{AlreadyExists} or ``key file does not contain a 32-byte seed.'' We
+resolve this with a \emph{first-writer-wins} construction: each creator writes
+its candidate seed to a private per-seed staging file and then attempts an
+atomic \texttt{hard\_link} onto the canonical path. Exactly one link succeeds;
+losers observe \texttt{AlreadyExists}, discard their staging file, and read the
+winner's seed. There are no torn reads because the canonical path only ever
+appears fully formed. This made the approval tests deterministic under the
+parallel test runner, which had previously passed only when a key file happened
+to pre-exist.
 
-Approval is a first-class security control. Approval requests and decisions are durable, correlated with the original operation, and visible across local operator surfaces. Telegram may be an approval channel, but it cannot replace backend policy.
+\subsection{Secret-safe audit}
+Audit records must be useful without becoming secret stores. Secret-like
+fields---tokens, passwords, API keys, authorization headers, cookies---are
+redacted from logs and audit exports, and raw inbound payload logging is off by
+default. Diagnostic records preserve event id, correlation id, actor,
+component, operation, decision, timestamp, and diagnostic class. Repository
+secrets (for example the Telegram bot token) are kept out of version control
+and allow-listed in the secret scanner so the security lane stays both strict
+and green.
 
-\section{Testing and Reproducibility}
+\subsection{Risk-scored Telegram approval}
+Telegram is an approval channel, never a policy replacement. Beyond text
+intake, the channel accepts voice notes and attaches a risk score to the
+requested operation; higher-risk operations require explicit confirmation
+before a token is minted. The backend remains the authority: a Telegram
+``approve'' is only honored if it resolves to a valid, unexpired, single-use
+token for the correlated operation.
 
-The V1 test bar is CI-local parity. The same embedded SQLite and in-process JPCM event bus defaults used by developers must be exercised by CI. Remote services are excluded from the default proof path. Telegram and adapter integrations must provide local fakes or fixtures for deterministic verification.
+\section{Bounded Adapters and External Execution}
+\label{sec:adapters}
 
-Required proof lanes are unit, integration-local, protocol, security, operations, and reproducibility. Unit tests prove isolated validation and state transitions. Integration-local tests prove startup, migrations, event publish and replay, approval persistence, and UI-facing contracts. Protocol tests prove JCP/1.0.0 acceptance and rejection under JPCM. Security tests prove redaction, approval enforcement, adapter boundaries, and replay side-effect safety. Operations tests prove cold start, restart, degraded behavior, and audit export. Reproducibility tests prove that fixtures, generated zones, and documented commands are sufficient to recreate the evidence.
+Adapters implement a single trait---\texttt{execute(\&WorkOrder)} returning a
+vector of \texttt{Evidence}---and are constructed with an injectable client so
+that tests run against deterministic stubs while production uses real
+transports. The typed \texttt{AdapterError} carries purpose, reason,
+common fixes, an optional docs URL, and a repair hint, so failures are
+actionable to both operators and agents rather than opaque.
 
-\section{Governance}
+\textbf{Jekko worker engine.} Real work is delegated to Jekko, reached over an
+HTTP control endpoint and an OpenAI-compatible fusion endpoint
+(\texttt{/v1/chat/completions}), with deeper jobs dispatched through a router
+that exposes \texttt{worker\_run} and \texttt{worker\_team} over JSON-RPC. The
+adapter maps engine outcomes into JCP evidence and surfaces partial or degraded
+results explicitly rather than silently. Crucially, workers are powered by the
+external engine, not by the controlling agents; the control plane orchestrates
+and audits but does not itself perform the work.
 
-Governance artifacts define who owns paths, which claims require proof, which zones may be generated, and what audit policy applies. The append-only agent chat log records coordination decisions. The work plan captures status and follow-up work. Generated content is allowed only in declared zones, while final documentation and paper sources remain manually governed unless a later policy revision says otherwise.
+\textbf{Jeryu ecosystem.} The Jeryu adapter exposes an
+\texttt{EcosystemSnapshot} of tools and their relationships across repositories,
+plus explicit degradation when the producer is unavailable. The snapshot is
+serialized in the shape the cockpit consumes directly, which backs a live
+operator view of every tool in the ecosystem, how tools relate, the active work
+queue, and which systems need attention---rendered in React/TypeScript and kept
+current over a streaming channel.
+
+\section{Conformance-Gated Multi-Agent Development}
+\label{sec:ratchet}
+
+\subsection{The problem}
+JMCP V1 was developed by two autonomous agents editing a shared working tree
+concurrently. In that setting, conformance regressions are the default risk:
+one agent's edit can re-introduce a finding another removed, or a mid-edit tree
+can be committed below an already-accepted quality bar. We make non-regression
+a mechanical property.
+
+\subsection{The auditor and the score}
+A static auditor (Jankurai) scores the repository on a 0--100 scale, applies
+categorical \emph{caps} (for example, ``no security lane on a high-risk repo''
+or ``release-readiness gap''), and emits per-rule \emph{findings}
+(\texttt{HLT-}$xxx$). The audit is the to-do list: each finding carries its own
+problem statement and suggested fix, and caps map to whole categories of work
+(CI hardening, dead-language markers, typed errors, UX-QA lanes, supply-chain
+evidence, and so on).
+
+\subsection{The ratchet}
+We define a compact, accepted \emph{floor}: a summary
+$\{\textit{score}, \textit{raw\_score}, \textit{caps\_applied},
+\textit{rule\_counts}\}$ stored in the repository. A comparator re-audits the
+current tree and \textbf{rejects} the change if any of the following worsen
+relative to the floor:
+\[
+\textit{score}\downarrow \;\lor\;
+|\textit{caps}|\uparrow \;\lor\;
+\textstyle\sum \textit{findings}\uparrow .
+\]
+A change that alters \emph{which} cap is present without raising the count or
+lowering the score is reported as a note (``fix this next'') but allowed, so
+net improvements are never blocked. The comparator is invoked from
+\texttt{ops/git-hooks/pre-commit} and \texttt{pre-push} (activated by pointing
+\texttt{core.hooksPath} at the repository's hooks) and from a CI lane, so the
+gate holds locally and---authoritatively---in continuous integration. The floor
+only ratchets \emph{up}, via an explicit \texttt{--accept} after a clean,
+improved audit.
+
+\subsection{Reproducibility of the floor}
+A practical subtlety is that the audit must be evaluated on the
+\emph{committed} state, not a developer's working tree: generated and
+git-ignored artifacts (for example a UX-QA report) can suppress caps that a
+clean checkout would show. We therefore accept the floor from a fresh,
+detached checkout of \texttt{HEAD}, so the bar that every agent's clean clone
+sees is the bar the ratchet enforces. This avoids a floor that silently depends
+on uncommitted state.
+
+\subsection{Coordination protocol}
+The two agents coordinate through an append-only chat log and a claimable work
+plan in the repository. Work is scoped (each agent edits disjoint paths),
+landed inside explicit commit windows, and---because the ratchet runs on every
+commit---neither agent can regress conformance while fixing it. The audit is
+re-run after each batch and the floor is bumped as the score improves toward the
+target of $\geq 85$ with zero caps and zero high-severity findings.
+
+\section{Reproducibility Standard}
+
+The V1 test bar is CI--local parity. The same embedded SQLite and in-process
+JPCM defaults that developers use are exercised by CI; remote services are
+excluded from the default proof path; Telegram and adapter integrations provide
+local fakes or fixtures. The same lane scripts (\texttt{ops/ci/*.sh}) are
+invoked by the local runner and by each GitHub workflow, so ``thin'' workflows
+call shared scripts rather than duplicating logic. Required proof lanes are
+unit, integration-local, protocol, security, operations, and reproducibility.
+Reproducibility tests prove that fixtures, declared generated zones, and
+documented commands suffice to recreate the evidence.
+
+\section{Evaluation}
+\label{sec:eval}
+
+\subsection{Implementation scale}
+The Rust workspace is twelve library crates and three Rust binaries plus a
+React/TypeScript cockpit and a Rust TUI: approximately 6{,}800 lines of Rust
+under 83 automated tests. Three GitHub workflows (CI, security, and the
+Jankurai audit) run the same lane scripts as the local runner, and all three
+are green on the committed mainline.
+
+\subsection{Approval correctness under concurrency}
+Before the first-writer-wins key store, the approval tests
+(\emph{expired-token}, \emph{forged-token}, \emph{single-use}) passed only when
+the seed file pre-existed and raced otherwise; after the fix they were green
+across repeated parallel stress runs and in CI. This is the concrete payoff of
+treating the local profile as the audited profile: a concurrency bug in the
+\emph{key store} would have been a security bug in \emph{approval}.
+
+\subsection{Ratchet behavior}
+We exercised the ratchet two ways. A deliberately regressing change (re-adding a
+dead-language marker, or any edit that raises the cap or finding count) is
+rejected at commit time with the exact offending cap/finding printed. A clean,
+net-improving change passes, and the floor is then accepted upward. Evaluating
+the floor on a detached checkout of \texttt{HEAD} (rather than a dirty tree)
+exposed a two-cap discrepancy between the committed state and an uncommitted
+batch, confirming the need to seed the floor from committed state. The CI
+ratchet lane runs in advisory mode so that the audit job stays green while the
+local hooks enforce; promoting the lane to required is a one-line change once
+the score clears the target.
+
+\section{Threats to Validity}
+
+The single-machine profile is deliberately narrow; distributed transport,
+multi-tenant isolation, and high-availability replay are explicitly out of V1
+scope, and the JPCM in-process bus assumes a single ordering authority. The
+ratchet enforces \emph{non-regression}, not absolute quality: a repository can
+sit at a low-but-stable floor, so the score target must be driven up
+separately. Categorical caps compress heterogeneous work into one count, which
+can mask a hard finding behind an easy one; we mitigate this by also comparing
+total findings and by reporting changed-but-not-worse cap sets. Finally, the
+external engines (Jekko, Jeryu) are evaluated through deterministic stubs in CI;
+their live behavior is exercised out of band.
 
 \section{Conclusion}
 
-JMCP V1 is defined as a local system with production-shaped discipline: protocol-first messages, durable state, replayable events, explicit approvals, bounded adapters, secret-safe audit, and deterministic verification. The architecture is deliberately small enough to run locally and strict enough to serve as a trustworthy foundation for later expansion beyond the single-machine profile.
+JMCP V1 is a local system with production-shaped discipline: protocol-first
+messages, durable state, replayable events, cryptographic single-use approvals,
+bounded adapters over real external engines, secret-safe audit, and
+deterministic verification at CI--local parity. Its construction contributes a
+conformance-gated, multi-agent process in which a regression ratchet---at
+commit, push, and CI---makes it mechanically impossible to lower the
+repository's audited quality while still permitting every net improvement. The
+result is deliberately small enough to run on one machine and strict enough to
+serve as a trustworthy foundation for expansion beyond the single-machine
+profile.
+
+\begin{thebibliography}{9}
+\bibitem{ed25519} D.~J. Bernstein, N.~Duif, T.~Lange, P.~Schwabe, and B.-Y.
+Yang, ``High-speed high-security signatures,'' \emph{Journal of Cryptographic
+Engineering}, vol.~2, no.~2, pp.~77--89, 2012.
+\bibitem{eventsourcing} M.~Fowler, ``Event Sourcing,'' martinfowler.com, 2005.
+\bibitem{sqlite} D.~R. Hipp et~al., ``SQLite,'' \url{https://sqlite.org}.
+\bibitem{telegrambot} Telegram, ``Bot API,''
+\url{https://core.telegram.org/bots/api}.
+\bibitem{ci} P.~M. Duvall, S.~Matyas, and A.~Glover, \emph{Continuous
+Integration: Improving Software Quality and Reducing Risk}. Addison-Wesley,
+2007.
+\end{thebibliography}
 
 \end{document}
-
