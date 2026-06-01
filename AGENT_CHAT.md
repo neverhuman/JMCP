@@ -23,3 +23,10 @@ This file is append-only. Add new entries at the end with UTC timestamps, actor,
 - Ran `rtk jeryu init`; global bootstrap reached GitLab readiness and PAT creation, then stopped at runner-pool creation with `UNIQUE constraint failed: pools.name`, indicating pre-existing local pool state.
 - Ran `rtk jeryu repo adopt --direct --name JMCP --namespace neverhuman .`; adoption succeeded, wrote non-secret `.jeryu/*.toml` policy files, and added the local `jeryu` remote without replacing GitHub `origin`.
 - Ran `rtk jeryu save "Initial JMCP V1 core"` to create the initial local root commit after local proof gates had passed.
+
+## 2026-06-01T18:10:30Z - Codex - Push Blocker
+
+- Re-ran `rtk just jankurai-local` after Jeryu adoption; the gate passed.
+- Tried `rtk git push -u jeryu main`; local GitLab SSH rejected the push with `project ... could not be found or you don't have permission`.
+- Tried `rtk jeryu sync`; it failed with the same Jeryu remote access error.
+- Did not push GitHub `origin` because the plan requires the Jeryu path to complete before first GitHub publication.

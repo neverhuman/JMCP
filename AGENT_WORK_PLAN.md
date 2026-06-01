@@ -33,3 +33,4 @@
 - Replace stub signatures with real key-backed signing before networked multi-tenant use.
 - Add Postgres/NATS implementations behind the existing store/bus boundaries when V1 needs distributed runtime.
 - Expand adapter live-smoke tests once local `jankurai`, `jeryu`, and `jekko` CLIs are available in CI.
+- Repair local Jeryu SSH/project access before first GitHub push; `jeryu repo adopt` succeeded, but `git push jeryu main` and `jeryu sync` currently fail on local GitLab authorization.
