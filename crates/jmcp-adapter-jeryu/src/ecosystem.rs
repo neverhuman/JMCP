@@ -5,10 +5,11 @@
 //! the cockpit `ToolAsset` type in `apps/cockpit/src/types.ts`): tools across
 //! every repo, their dependency edges, queue depth, and health.
 //!
-//! Degradation is **explicit**, never silent or faked:
+//! Degradation is **explicit** and evidence-backed, never silent or faked:
 //! - Jeryu unreachable / missing the endpoint -> [`EcosystemSnapshot::degraded`]
-//!   with `live=false` and a human-readable `degraded_reason` (the cockpit can
-//!   render "Jeryu unavailable" rather than a blank or fabricated graph).
+//!   with `live=false` and a human-readable `degraded_reason` (the cockpit
+//!   renders the explicit `degradedReason` instead of an empty or invented
+//!   graph).
 //! - A malformed tool record (missing required fields) is kept but marked
 //!   `health = "degraded"` with explicit placeholders, and the snapshot records
 //!   how many records were degraded -- records are never dropped or invented.
