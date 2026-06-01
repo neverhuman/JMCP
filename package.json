@@ -1,0 +1,22 @@
+{
+  "name": "@neverhuman/jmcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JMCP V1 repository automation and schema gates.",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/cockpit"
+  ],
+  "scripts": {
+    "doctor": "bash scripts/ci-local.sh doctor",
+    "fast": "bash scripts/ci-local.sh fast",
+    "ci": "bash scripts/ci-local.sh ci",
+    "security": "bash scripts/ci-local.sh security",
+    "conformance": "bash scripts/ci-local.sh conformance",
+    "jankurai-local": "bash scripts/ci-local.sh jankurai-local",
+    "build": "npm --workspace @jmcp/cockpit run build",
+    "typecheck": "npm --workspace @jmcp/cockpit run typecheck",
+    "lint": "npm --workspace @jmcp/cockpit run lint",
+    "test": "npm --workspace @jmcp/cockpit run test"
+  }
+}

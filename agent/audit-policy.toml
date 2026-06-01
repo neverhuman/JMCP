@@ -1,0 +1,52 @@
+version = 1
+system = "JMCP"
+
+[retention]
+default = "local-project-retained"
+rotation = "operator-managed"
+export_format = "jsonl"
+
+[classification]
+secret_fields = [
+  "token",
+  "password",
+  "secret",
+  "api_key",
+  "authorization",
+  "cookie"
+]
+public_fields = [
+  "event_id",
+  "correlation_id",
+  "actor",
+  "component",
+  "operation",
+  "decision",
+  "timestamp",
+  "diagnostic_class"
+]
+
+[rules]
+redact_secret_fields = true
+record_approval_decisions = true
+record_policy_denials = true
+record_replay_start_stop = true
+record_adapter_boundary_crossings = true
+disallow_raw_payload_logging_by_default = true
+
+[[event_class]]
+name = "approval.requested"
+required_fields = ["event_id", "correlation_id", "actor", "component", "operation", "timestamp"]
+
+[[event_class]]
+name = "approval.decided"
+required_fields = ["event_id", "correlation_id", "actor", "decision", "timestamp"]
+
+[[event_class]]
+name = "adapter.invoked"
+required_fields = ["event_id", "correlation_id", "component", "operation", "timestamp"]
+
+[[event_class]]
+name = "replay.executed"
+required_fields = ["event_id", "correlation_id", "component", "operation", "timestamp"]
+

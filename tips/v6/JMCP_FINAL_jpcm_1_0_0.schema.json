@@ -1,0 +1,2224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.jmcp.dev/jpcm/1.0.0/envelope.schema.json",
+  "title": "JPCM-1.0.0 Joint Process Control Messaging Envelope and Payload Schema",
+  "description": "Normative schema for the JMCP/JPCM control protocol. All services, tools, agents, UIs, voice adapters, data adapters, and self-improvement workers MUST communicate with JMCP using this envelope or a semantically equivalent negotiated binding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jpcm_version",
+    "id",
+    "type",
+    "subject",
+    "time",
+    "source",
+    "producer",
+    "tenant",
+    "cell",
+    "trace",
+    "correlation_id",
+    "actor",
+    "authority",
+    "risk",
+    "privacy",
+    "delivery",
+    "schema_ref",
+    "payload_hash",
+    "signature",
+    "payload"
+  ],
+  "properties": {
+    "jpcm_version": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "type": "string",
+      "description": "UUIDv7 or ULID. Globally unique and immutable."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "service.card.published",
+        "service.heartbeat",
+        "service.health.reported",
+        "service.degraded",
+        "service.quarantined",
+        "service.conformance.reported",
+        "user.intent.submitted",
+        "user.intent.updated",
+        "user.intent.cancel_requested",
+        "user.decision.submitted",
+        "user.preference.updated",
+        "attention.candidate",
+        "attention.escalation",
+        "attention.summary",
+        "attention.decision_required",
+        "attention.suppressed",
+        "attention.resolved",
+        "voice.session.started",
+        "voice.segment.transcribed",
+        "voice.command.candidate",
+        "voice.confirmation.required",
+        "voice.confirmation.accepted",
+        "voice.confirmation.rejected",
+        "voice.session.ended",
+        "text.message.received",
+        "text.message.sent",
+        "work_order.created",
+        "work_order.planned",
+        "work_order.approved",
+        "work_order.started",
+        "work_order.paused",
+        "work_order.resumed",
+        "work_order.completed",
+        "work_order.failed",
+        "work_order.cancelled",
+        "work_order.quarantined",
+        "work_order.rolled_back",
+        "task.created",
+        "task.scheduled",
+        "task.dispatched",
+        "task.claimed",
+        "task.progress",
+        "task.blocked",
+        "task.awaiting_evidence",
+        "task.awaiting_approval",
+        "task.completed",
+        "task.failed",
+        "task.cancelled",
+        "task.quarantined",
+        "task.rollback_requested",
+        "task.rolled_back",
+        "lease.requested",
+        "lease.issued",
+        "lease.renewed",
+        "lease.revoked",
+        "lease.expired",
+        "lease.denied",
+        "lease.used",
+        "context.requested",
+        "context.granted",
+        "context.revoked",
+        "context.used",
+        "context.leaked_detected",
+        "tool.card.published",
+        "tool.call.requested",
+        "tool.call.authorized",
+        "tool.call.started",
+        "tool.call.result",
+        "tool.call.denied",
+        "tool.call.failed",
+        "tool.call.cancelled",
+        "data.card.published",
+        "data.query.requested",
+        "data.query.authorized",
+        "data.query.result",
+        "data.query.denied",
+        "data.mutation.requested",
+        "data.mutation.authorized",
+        "data.mutation.result",
+        "data.mutation.denied",
+        "evidence.claimed",
+        "evidence.appended",
+        "evidence.verified",
+        "evidence.rejected",
+        "evidence.conflict.detected",
+        "promotion.requested",
+        "promotion.approved",
+        "promotion.denied",
+        "promotion.executed",
+        "rollback.started",
+        "rollback.completed",
+        "rollback.failed",
+        "policy.decision",
+        "policy.veto.issued",
+        "policy.waiver.requested",
+        "policy.waiver.granted",
+        "policy.waiver.denied",
+        "policy.updated",
+        "memory.proposal",
+        "memory.accepted",
+        "memory.rejected",
+        "memory.compacted",
+        "memory.tombstoned",
+        "memory.poisoning.detected",
+        "experience.event",
+        "reflection.report",
+        "technology.inventory.reported",
+        "technology.scout.finding",
+        "technology.gap.detected",
+        "technology.build.proposal",
+        "technology.build.started",
+        "technology.build.result",
+        "technology.build.promoted",
+        "technology.build.rejected",
+        "self_improvement.proposal",
+        "self_improvement.experiment_started",
+        "self_improvement.evaluation_result",
+        "self_improvement.promoted",
+        "self_improvement.rejected",
+        "self_improvement.rollback",
+        "incident.opened",
+        "incident.updated",
+        "incident.mitigated",
+        "incident.closed",
+        "incident.postmortem.published",
+        "audit.checkpoint",
+        "audit.exported",
+        "audit.tamper_detected"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^jpcm(\\.[a-z0-9_-]+)+$",
+      "description": "Hierarchical routing subject. Example: jpcm.task.event.repo.<repo_id>.<work_order_id>."
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "description": "Logical service or adapter URI, e.g., service:jeryu.git or ui:web-cockpit."
+    },
+    "producer": {
+      "$ref": "#/$defs/Principal"
+    },
+    "tenant": {
+      "type": "string"
+    },
+    "cell": {
+      "type": "string",
+      "description": "Control cell or deployment cell. Used for blast-radius isolation."
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test",
+        "staging",
+        "prod",
+        "incident",
+        "lab"
+      ],
+      "default": "prod"
+    },
+    "trace": {
+      "$ref": "#/$defs/TraceContext"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stream": {
+      "$ref": "#/$defs/StreamPosition"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "authority": {
+      "$ref": "#/$defs/AuthorityContext"
+    },
+    "risk": {
+      "$ref": "#/$defs/RiskContext"
+    },
+    "privacy": {
+      "$ref": "#/$defs/PrivacyContext"
+    },
+    "delivery": {
+      "$ref": "#/$defs/DeliveryContext"
+    },
+    "ordering_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dedupe_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_ref": {
+      "type": "string",
+      "description": "Canonical schema id for payload."
+    },
+    "payload_hash": {
+      "$ref": "#/$defs/Digest"
+    },
+    "signature": {
+      "$ref": "#/$defs/Signature"
+    },
+    "payload": {
+      "$ref": "#/$defs/JpcmPayload"
+    }
+  },
+  "$defs": {
+    "Digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alg",
+        "value"
+      ],
+      "properties": {
+        "alg": {
+          "enum": [
+            "sha256",
+            "sha512",
+            "blake3"
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "Signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alg",
+        "kid",
+        "value",
+        "covered_fields"
+      ],
+      "properties": {
+        "alg": {
+          "enum": [
+            "Ed25519",
+            "ES256",
+            "RS256",
+            "DSSE-Ed25519",
+            "JWS-Ed25519"
+          ]
+        },
+        "kid": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "covered_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "certificate_chain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rekor_entry": {
+          "type": "string"
+        }
+      }
+    },
+    "Principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "trust_domain"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "human",
+            "service",
+            "agent",
+            "tool",
+            "adapter",
+            "model",
+            "scheduler",
+            "policy_engine",
+            "ui",
+            "voice_gateway"
+          ]
+        },
+        "trust_domain": {
+          "type": "string"
+        },
+        "spiffe_id": {
+          "type": "string"
+        },
+        "public_key_ref": {
+          "type": "string"
+        },
+        "attestation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_id",
+        "actor_kind",
+        "display_name"
+      ],
+      "properties": {
+        "actor_id": {
+          "type": "string"
+        },
+        "actor_kind": {
+          "enum": [
+            "human",
+            "jmcp",
+            "agent",
+            "service",
+            "tool",
+            "model",
+            "external_system",
+            "scheduled_policy"
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "on_behalf_of": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TraceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "span_id"
+      ],
+      "properties": {
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "parent_span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "traceparent": {
+          "type": "string"
+        },
+        "tracestate": {
+          "type": "string"
+        }
+      }
+    },
+    "StreamPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stream_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consumer": {
+          "type": "string"
+        },
+        "partition": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "AuthorityContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "mode",
+        "lease_ids",
+        "policy_version",
+        "allowed"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "observe_only",
+            "draft_only",
+            "sandbox_execute",
+            "repo_branch",
+            "pr_only",
+            "guarded_merge",
+            "production_mutation",
+            "self_modify_proposal_only"
+          ]
+        },
+        "lease_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "requires_human": {
+          "type": "boolean"
+        },
+        "required_evidence_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceClass"
+          }
+        },
+        "veto_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RiskContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tier",
+        "score",
+        "blast_radius",
+        "reversibility"
+      ],
+      "properties": {
+        "tier": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blast_radius": {
+          "enum": [
+            "single_file",
+            "repo",
+            "org",
+            "external_service",
+            "customer",
+            "production",
+            "control_plane",
+            "unknown"
+          ]
+        },
+        "reversibility": {
+          "enum": [
+            "trivial",
+            "rollback_available",
+            "manual_repair",
+            "hard",
+            "irreversible",
+            "unknown"
+          ]
+        },
+        "novelty": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uncertainty": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "safety_case_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PrivacyContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_classes",
+        "retention",
+        "purpose"
+      ],
+      "properties": {
+        "data_classes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "secret",
+              "credential",
+              "regulated",
+              "personal",
+              "customer"
+            ]
+          }
+        },
+        "retention": {
+          "enum": [
+            "transient",
+            "work_order",
+            "audit",
+            "legal_hold",
+            "delete_after_session"
+          ]
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "redaction_policy": {
+          "type": "string"
+        },
+        "egress_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DeliveryContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "ack_required",
+        "retry_policy"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "ephemeral",
+            "durable",
+            "command",
+            "audit",
+            "evidence",
+            "attention",
+            "voice_realtime"
+          ]
+        },
+        "ack_required": {
+          "type": "boolean"
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/RetryPolicy"
+        },
+        "ttl_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "backpressure_group": {
+          "type": "string"
+        }
+      }
+    },
+    "RetryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "initial_backoff_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_backoff_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jitter": {
+          "type": "boolean"
+        },
+        "dead_letter_subject": {
+          "type": "string"
+        }
+      }
+    },
+    "EvidenceClass": {
+      "type": "string",
+      "enum": [
+        "unit_test",
+        "integration_test",
+        "e2e_test",
+        "static_analysis",
+        "security_scan",
+        "typecheck",
+        "lint",
+        "build",
+        "benchmark",
+        "diff",
+        "review",
+        "policy_receipt",
+        "provenance",
+        "attestation",
+        "replay",
+        "screenshot",
+        "human_approval",
+        "runtime_trace",
+        "rollback_plan",
+        "data_lineage",
+        "cost_receipt",
+        "other"
+      ]
+    },
+    "Money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "properties": {
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "Reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "uri"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "artifact",
+            "commit",
+            "pr",
+            "issue",
+            "run",
+            "log",
+            "trace",
+            "metric",
+            "span",
+            "object",
+            "schema",
+            "policy",
+            "memory",
+            "doc",
+            "url",
+            "file",
+            "ticket"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "ResourceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource_kind",
+        "resource_id",
+        "permissions"
+      ],
+      "properties": {
+        "resource_kind": {
+          "enum": [
+            "repo",
+            "branch",
+            "file",
+            "directory",
+            "database",
+            "table",
+            "bucket",
+            "object",
+            "api",
+            "tool",
+            "model",
+            "secret",
+            "ci",
+            "cloud_account",
+            "ui",
+            "voice_session",
+            "control_plane",
+            "memory_store",
+            "knowledge_graph",
+            "network"
+          ]
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "search",
+              "write",
+              "delete",
+              "execute",
+              "network",
+              "publish",
+              "merge",
+              "deploy",
+              "approve",
+              "mutate_policy",
+              "mutate_memory",
+              "build_tool",
+              "self_modify"
+            ]
+          },
+          "minItems": 1
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "BaseTaskRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "work_order_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "parent_task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repo_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ServiceCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "name",
+        "version",
+        "kind",
+        "owner",
+        "capabilities",
+        "endpoints",
+        "schemas",
+        "trust"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "jmcp_core",
+            "adapter",
+            "agent",
+            "tool",
+            "datastore",
+            "ui",
+            "voice_gateway",
+            "policy_engine",
+            "scheduler",
+            "evidence_verifier",
+            "repo_system",
+            "ci",
+            "model_router"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "transport",
+              "address"
+            ],
+            "properties": {
+              "transport": {
+                "enum": [
+                  "nats",
+                  "grpc",
+                  "http",
+                  "websocket",
+                  "sse",
+                  "webrtc",
+                  "stdio",
+                  "mcp",
+                  "a2a",
+                  "cli"
+                ]
+              },
+              "address": {
+                "type": "string"
+              },
+              "auth": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "schemas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "trust_level",
+            "attestation_required"
+          ],
+          "properties": {
+            "trust_level": {
+              "enum": [
+                "untrusted",
+                "probation",
+                "trusted_for_scope",
+                "core",
+                "quarantined"
+              ]
+            },
+            "attestation_required": {
+              "type": "boolean"
+            },
+            "last_conformance_report": {
+              "type": "string"
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "ToolCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_id",
+        "name",
+        "version",
+        "owner",
+        "input_schema",
+        "output_schema",
+        "side_effects",
+        "risk_tier",
+        "leases_required"
+      ],
+      "properties": {
+        "tool_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "input_schema": {
+          "type": "string"
+        },
+        "output_schema": {
+          "type": "string"
+        },
+        "side_effects": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "none",
+              "filesystem",
+              "network",
+              "database",
+              "git",
+              "ci",
+              "cloud",
+              "money",
+              "credential",
+              "policy",
+              "memory",
+              "control_plane"
+            ]
+          }
+        },
+        "risk_tier": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "leases_required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dry_run_supported": {
+          "type": "boolean"
+        },
+        "rollback_supported": {
+          "type": "boolean"
+        },
+        "conformance_suite": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "candidate",
+            "probation",
+            "approved",
+            "deprecated",
+            "quarantined"
+          ]
+        }
+      }
+    },
+    "DataCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_id",
+        "name",
+        "owner",
+        "data_classes",
+        "access_patterns",
+        "retention",
+        "lineage"
+      ],
+      "properties": {
+        "data_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "data_classes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "secret",
+              "credential",
+              "regulated",
+              "personal",
+              "customer"
+            ]
+          }
+        },
+        "access_patterns": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "search",
+              "aggregate",
+              "join",
+              "export",
+              "mutate",
+              "delete"
+            ]
+          }
+        },
+        "retention": {
+          "type": "string"
+        },
+        "lineage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "freshness_slo_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "CapabilityLease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lease_id",
+        "issued_to",
+        "issued_by",
+        "valid_from",
+        "valid_until",
+        "scopes",
+        "risk_tier",
+        "budgets",
+        "non_transferable"
+      ],
+      "properties": {
+        "lease_id": {
+          "type": "string"
+        },
+        "issued_to": {
+          "$ref": "#/$defs/Principal"
+        },
+        "issued_by": {
+          "$ref": "#/$defs/Principal"
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceScope"
+          },
+          "minItems": 1
+        },
+        "risk_tier": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_cost": {
+              "$ref": "#/$defs/Money"
+            },
+            "max_wall_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_tool_calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_network_hosts": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "revocation_subject": {
+          "type": "string"
+        },
+        "non_transferable": {
+          "const": true
+        },
+        "renewal_policy": {
+          "enum": [
+            "never",
+            "explicit",
+            "auto_if_low_risk"
+          ]
+        }
+      }
+    },
+    "WorkOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "work_order_id",
+        "title",
+        "intent",
+        "task_type",
+        "risk_tier",
+        "autonomy",
+        "state",
+        "owner",
+        "acceptance_criteria",
+        "evidence_required"
+      ],
+      "properties": {
+        "work_order_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "task_type": {
+          "enum": [
+            "research",
+            "concept_search",
+            "knowledge_compression",
+            "architecture_design",
+            "repo_creation",
+            "feature",
+            "bug_hunt",
+            "bug_fix",
+            "refactor",
+            "deduplication",
+            "performance",
+            "security_review",
+            "vulnerability_fix",
+            "dependency_update",
+            "ci_fix",
+            "test_generation",
+            "docs",
+            "release",
+            "deployment",
+            "data_migration",
+            "incident_response",
+            "root_cause_analysis",
+            "tool_build",
+            "tool_qualification",
+            "model_eval",
+            "policy_update",
+            "protocol_update",
+            "self_improvement",
+            "memory_maintenance",
+            "ux_review",
+            "voice_flow",
+            "cost_optimization",
+            "compliance_review",
+            "code_graph_analysis",
+            "unknown"
+          ]
+        },
+        "risk_tier": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "autonomy": {
+          "enum": [
+            "observe_only",
+            "draft_only",
+            "sandbox_execute",
+            "repo_branch",
+            "pr_only",
+            "guarded_merge",
+            "production_mutation",
+            "self_modify_proposal_only"
+          ]
+        },
+        "state": {
+          "enum": [
+            "intake",
+            "triaged",
+            "planned",
+            "approved",
+            "active",
+            "paused",
+            "blocked",
+            "awaiting_evidence",
+            "awaiting_user",
+            "completed",
+            "failed",
+            "cancelled",
+            "quarantined",
+            "rolled_back"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "non_goals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidence_required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceClass"
+          }
+        },
+        "rollback_plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attention_policy": {
+          "enum": [
+            "silent",
+            "digest",
+            "notify",
+            "decision",
+            "break_glass"
+          ]
+        },
+        "created_from": {
+          "$ref": "#/$defs/Reference"
+        }
+      }
+    },
+    "Task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "work_order_id",
+        "task_type",
+        "title",
+        "state",
+        "assignee",
+        "dependencies",
+        "required_leases",
+        "evidence_required"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string"
+        },
+        "work_order_id": {
+          "type": "string"
+        },
+        "task_type": {
+          "enum": [
+            "research",
+            "concept_search",
+            "knowledge_compression",
+            "architecture_design",
+            "repo_creation",
+            "feature",
+            "bug_hunt",
+            "bug_fix",
+            "refactor",
+            "deduplication",
+            "performance",
+            "security_review",
+            "vulnerability_fix",
+            "dependency_update",
+            "ci_fix",
+            "test_generation",
+            "docs",
+            "release",
+            "deployment",
+            "data_migration",
+            "incident_response",
+            "root_cause_analysis",
+            "tool_build",
+            "tool_qualification",
+            "model_eval",
+            "policy_update",
+            "protocol_update",
+            "self_improvement",
+            "memory_maintenance",
+            "ux_review",
+            "voice_flow",
+            "cost_optimization",
+            "compliance_review",
+            "code_graph_analysis",
+            "unknown"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "created",
+            "scheduled",
+            "dispatched",
+            "claimed",
+            "running",
+            "blocked",
+            "awaiting_evidence",
+            "awaiting_approval",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "quarantined",
+            "rollback_pending",
+            "rolled_back"
+          ]
+        },
+        "assignee": {
+          "$ref": "#/$defs/Principal"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_leases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceClass"
+          }
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "estimated_value": {
+          "type": "number"
+        },
+        "estimated_cost": {
+          "type": "number"
+        },
+        "deadline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "rollback_task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "EvidenceBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "work_order_id",
+        "claims",
+        "artifacts",
+        "verifier",
+        "quality",
+        "created_at"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "work_order_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "claim",
+              "status"
+            ],
+            "properties": {
+              "claim": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "claimed",
+                  "verified",
+                  "rejected",
+                  "conflicting",
+                  "unknown"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "verifier": {
+          "$ref": "#/$defs/Principal"
+        },
+        "quality": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reproducible": {
+              "type": "boolean"
+            },
+            "independent": {
+              "type": "boolean"
+            },
+            "fresh": {
+              "type": "boolean"
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "slsa_provenance": {
+          "$ref": "#/$defs/Reference"
+        },
+        "in_toto_attestation": {
+          "$ref": "#/$defs/Reference"
+        }
+      }
+    },
+    "PolicyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "decision",
+        "policy_version",
+        "inputs",
+        "reason"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "allow",
+            "deny",
+            "veto",
+            "require_human",
+            "require_more_evidence",
+            "quarantine",
+            "waive"
+          ]
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "AttentionPacket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attention_id",
+        "class",
+        "summary",
+        "why_now",
+        "recommended_action",
+        "options"
+      ],
+      "properties": {
+        "attention_id": {
+          "type": "string"
+        },
+        "class": {
+          "enum": [
+            "silent",
+            "digest",
+            "notify",
+            "decision",
+            "break_glass"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "why_now": {
+          "type": "string"
+        },
+        "recommended_action": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "effect"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string"
+              },
+              "risk_delta": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "deadline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "suppress_until": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "VoiceTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "voice_session_id",
+        "turn_id",
+        "phase",
+        "transcript",
+        "confidence",
+        "speaker"
+      ],
+      "properties": {
+        "voice_session_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "start",
+            "partial",
+            "final",
+            "command_candidate",
+            "confirmation",
+            "end"
+          ]
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "speaker": {
+          "enum": [
+            "user",
+            "jmcp",
+            "unknown"
+          ]
+        },
+        "audio_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "normalized_intent": {
+          "type": "string"
+        },
+        "requires_text_confirmation": {
+          "type": "boolean"
+        },
+        "high_risk_lockout": {
+          "type": "boolean"
+        }
+      }
+    },
+    "MemoryProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memory_id",
+        "proposal_type",
+        "content",
+        "source_evidence",
+        "retention",
+        "risk"
+      ],
+      "properties": {
+        "memory_id": {
+          "type": "string"
+        },
+        "proposal_type": {
+          "enum": [
+            "lesson",
+            "preference",
+            "repo_fact",
+            "tool_fact",
+            "incident_fact",
+            "negative_example",
+            "standard",
+            "tombstone",
+            "compaction"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "retention": {
+          "enum": [
+            "session",
+            "project",
+            "global",
+            "audit",
+            "delete"
+          ]
+        },
+        "risk": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "anti_poisoning_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "rejected",
+            "quarantined",
+            "expired"
+          ]
+        }
+      }
+    },
+    "TechnologyFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "category",
+        "summary",
+        "impact",
+        "recommendation"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "tool_gap",
+            "new_tool",
+            "new_model",
+            "protocol_change",
+            "security_advisory",
+            "performance_opportunity",
+            "cost_opportunity",
+            "deprecation",
+            "compliance_change"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "ToolBuildProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposal_id",
+        "problem",
+        "new_tool",
+        "expected_value",
+        "risk_tier",
+        "acceptance_tests",
+        "promotion_path"
+      ],
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "new_tool": {
+          "$ref": "#/$defs/ToolCard"
+        },
+        "expected_value": {
+          "type": "string"
+        },
+        "risk_tier": {
+          "enum": [
+            "r0_observe",
+            "r1_reversible_local",
+            "r2_repo_change",
+            "r3_external_side_effect",
+            "r4_security_or_money",
+            "r5_irreversible_or_legal",
+            "r6_self_modifying_control_plane"
+          ]
+        },
+        "acceptance_tests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "promotion_path": {
+          "enum": [
+            "lab_only",
+            "probation",
+            "approved_for_repo",
+            "approved_global"
+          ]
+        },
+        "rollback_plan": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        }
+      }
+    },
+    "SelfImprovementProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposal_id",
+        "target",
+        "hypothesis",
+        "change_type",
+        "guardrails",
+        "eval_plan",
+        "rollback_plan"
+      ],
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "policy",
+            "scheduler",
+            "prompt",
+            "workflow",
+            "memory",
+            "tool",
+            "model_route",
+            "ui",
+            "protocol",
+            "evidence_verifier",
+            "sandbox",
+            "attention_filter"
+          ]
+        },
+        "hypothesis": {
+          "type": "string"
+        },
+        "change_type": {
+          "enum": [
+            "configuration",
+            "rule",
+            "code",
+            "model",
+            "data",
+            "schema",
+            "process"
+          ]
+        },
+        "guardrails": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "eval_plan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rollback_plan": {
+          "type": "string"
+        },
+        "can_self_promote": {
+          "const": false
+        },
+        "requires_human": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "incident_id",
+        "severity",
+        "title",
+        "state",
+        "summary",
+        "affected_scopes"
+      ],
+      "properties": {
+        "incident_id": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "sev0",
+            "sev1",
+            "sev2",
+            "sev3",
+            "sev4"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "investigating",
+            "mitigating",
+            "monitoring",
+            "closed",
+            "postmortem"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "affected_scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceScope"
+          }
+        },
+        "timeline_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "root_cause": {
+          "type": "string"
+        },
+        "corrective_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "GenericEvent": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        }
+      }
+    },
+    "JpcmPayload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ServiceCard"
+        },
+        {
+          "$ref": "#/$defs/ToolCard"
+        },
+        {
+          "$ref": "#/$defs/DataCard"
+        },
+        {
+          "$ref": "#/$defs/CapabilityLease"
+        },
+        {
+          "$ref": "#/$defs/WorkOrder"
+        },
+        {
+          "$ref": "#/$defs/Task"
+        },
+        {
+          "$ref": "#/$defs/EvidenceBundle"
+        },
+        {
+          "$ref": "#/$defs/PolicyDecision"
+        },
+        {
+          "$ref": "#/$defs/AttentionPacket"
+        },
+        {
+          "$ref": "#/$defs/VoiceTurn"
+        },
+        {
+          "$ref": "#/$defs/MemoryProposal"
+        },
+        {
+          "$ref": "#/$defs/TechnologyFinding"
+        },
+        {
+          "$ref": "#/$defs/ToolBuildProposal"
+        },
+        {
+          "$ref": "#/$defs/SelfImprovementProposal"
+        },
+        {
+          "$ref": "#/$defs/Incident"
+        },
+        {
+          "$ref": "#/$defs/GenericEvent"
+        }
+      ]
+    }
+  }
+}

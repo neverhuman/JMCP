@@ -1,0 +1,15 @@
+[package]
+name = "jmcp-app"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+jcp-core = { path = "../jcp-core" }
+jmcp-attention = { path = "../jmcp-attention" }
+jmcp-domain = { path = "../jmcp-domain" }
+jmcp-store = { path = "../jmcp-store" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

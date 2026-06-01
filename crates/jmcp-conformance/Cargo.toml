@@ -1,0 +1,13 @@
+[package]
+name = "jmcp-conformance"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+jcp-core = { path = "../jcp-core" }
+serde_json.workspace = true
+
+[dev-dependencies]
+jmcp-app = { path = "../jmcp-app" }
+jmcp-store = { path = "../jmcp-store" }

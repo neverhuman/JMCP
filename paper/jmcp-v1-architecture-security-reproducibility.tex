@@ -1,0 +1,69 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{longtable}
+
+\title{JMCP V1: Local Production-Shaped Architecture, Security, and Reproducibility}
+\author{JMCP Governance Slice}
+\date{June 1, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+JMCP V1 defines a local production-shaped core for a protocol-governed automation system. JMCP is the system, JCP/1.0.0 is the protocol, and JPCM is the backbone and transport profile. The V1 baseline uses a Rust backend, embedded SQLite, an in-process replayable event bus, a React dashboard, a Rust terminal interface, Telegram text intake and approvals, and local Jankurai, Jeryu, and Jekko adapters. This paper states the architecture, security posture, and reproducibility standard that implementation work must satisfy.
+\end{abstract}
+
+\section{Scope and Claims}
+
+The central V1 claim is that a single-machine deployment can still preserve production-grade boundaries. Local execution is not a demo mode; it is the default operating profile. The system must provide durable state, protocol validation, explicit approval, replayable events, auditable decisions, and deterministic tests without requiring remote services.
+
+The governance baseline is intentionally narrow. JMCP names the system boundary. JCP/1.0.0 names the compatibility contract for messages. JPCM names the delivery and replay profile used by the local event bus and by future transports.
+
+\section{Architecture}
+
+The Rust backend is the authority for protocol validation, persistence, approval state, replay, and audit. Embedded SQLite is the durable store. The in-process event bus is the default JPCM implementation and carries replayable facts between runtime components. The React dashboard and Rust terminal interface are operator surfaces. Telegram provides text intake and approval interaction when configured. Jankurai, Jeryu, and Jekko are local adapters that provide capability at the edge.
+
+The major boundary is between the core runtime and clients of the runtime. User interfaces and adapters may request work, display state, and submit decisions, but they do not own policy enforcement. All shared messages are represented as JCP/1.0.0 envelopes before they enter routing, approval, audit, replay, or execution paths.
+
+\begin{longtable}{p{0.23\textwidth}p{0.67\textwidth}}
+\textbf{Component} & \textbf{V1 responsibility} \\
+Rust backend & Protocol validation, approval authority, persistence, replay, audit, and API contracts. \\
+SQLite & Durable local records for envelopes, approvals, audit entries, adapter observations, and replay checkpoints. \\
+JPCM event bus & In-process event delivery, replay metadata, ordering assumptions, and idempotency evidence. \\
+React dashboard & Visual inspection, operator approvals, runtime status, and audit review. \\
+Rust TUI & Terminal operation, recovery workflow, and low-dependency inspection. \\
+Telegram intake & Text input and approval interaction, subject to backend policy. \\
+Local adapters & Jankurai, Jeryu, and Jekko capabilities under protocol, approval, and audit constraints. \\
+\end{longtable}
+
+\section{Protocol and Replay}
+
+JCP/1.0.0 envelopes must carry stable identity, version, correlation identity, source, target or capability, timestamp, payload classification, and message type. JPCM defines how those envelopes move through the system. In V1, the in-process event bus is the default JPCM carrier. This choice makes local tests deterministic and allows replay without introducing distributed-system ambiguity before it is needed.
+
+Replay is a reconstruction mechanism, not a license to repeat side effects. A replay run should rebuild state from durable envelopes, approval records, audit facts, and checkpoints. Non-idempotent side effects must be skipped, simulated, or recognized as already committed by idempotency key and approval reference.
+
+\section{Security Model}
+
+The security model assumes that local adapters and operator interfaces are not policy authorities. They interact with the backend through bounded interfaces. Mutating operations, external calls, configuration changes, and user-visible releases require approval unless explicitly classified as read-only.
+
+Audit records must be useful without becoming secret stores. Secret-like fields such as tokens, passwords, API keys, authorization headers, and cookies are redacted from logs and audit exports. Raw inbound payload logging is disabled by default. Diagnostic records preserve event id, correlation id, actor, component, operation, decision, timestamp, and diagnostic class.
+
+Approval is a first-class security control. Approval requests and decisions are durable, correlated with the original operation, and visible across local operator surfaces. Telegram may be an approval channel, but it cannot replace backend policy.
+
+\section{Testing and Reproducibility}
+
+The V1 test bar is CI-local parity. The same embedded SQLite and in-process JPCM event bus defaults used by developers must be exercised by CI. Remote services are excluded from the default proof path. Telegram and adapter integrations must provide local fakes or fixtures for deterministic verification.
+
+Required proof lanes are unit, integration-local, protocol, security, operations, and reproducibility. Unit tests prove isolated validation and state transitions. Integration-local tests prove startup, migrations, event publish and replay, approval persistence, and UI-facing contracts. Protocol tests prove JCP/1.0.0 acceptance and rejection under JPCM. Security tests prove redaction, approval enforcement, adapter boundaries, and replay side-effect safety. Operations tests prove cold start, restart, degraded behavior, and audit export. Reproducibility tests prove that fixtures, generated zones, and documented commands are sufficient to recreate the evidence.
+
+\section{Governance}
+
+Governance artifacts define who owns paths, which claims require proof, which zones may be generated, and what audit policy applies. The append-only agent chat log records coordination decisions. The work plan captures status and follow-up work. Generated content is allowed only in declared zones, while final documentation and paper sources remain manually governed unless a later policy revision says otherwise.
+
+\section{Conclusion}
+
+JMCP V1 is defined as a local system with production-shaped discipline: protocol-first messages, durable state, replayable events, explicit approvals, bounded adapters, secret-safe audit, and deterministic verification. The architecture is deliberately small enough to run locally and strict enough to serve as a trustworthy foundation for later expansion beyond the single-machine profile.
+
+\end{document}
+

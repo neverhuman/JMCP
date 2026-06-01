@@ -1,0 +1,8 @@
+[package]
+name = "jmcp-attention"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+jmcp-domain = { path = "../jmcp-domain" }

@@ -1,0 +1,14 @@
+[package]
+name = "jmcpd"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+jmcp-api = { path = "../../crates/jmcp-api" }
+jmcp-app = { path = "../../crates/jmcp-app" }
+jmcp-store = { path = "../../crates/jmcp-store" }
+tokio.workspace = true

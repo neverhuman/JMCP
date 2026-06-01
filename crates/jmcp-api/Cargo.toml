@@ -1,0 +1,16 @@
+[package]
+name = "jmcp-api"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+jcp-core = { path = "../jcp-core" }
+jmcp-app = { path = "../jmcp-app" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-stream = "0.1"
+tower-http.workspace = true

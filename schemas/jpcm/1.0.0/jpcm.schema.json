@@ -1,0 +1,1421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.jmcp.dev/jpcm/1.0.0/schema.json",
+  "title": "JPCM Final Protocol Schema",
+  "description": "Versioned JSON Schema for the Joint Process/Control Messaging protocol used by JMCP-controlled services, tools, agents, data stores, user interfaces, voice interfaces, and self-improvement pipelines.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "envelope_id",
+    "event_type",
+    "event_time",
+    "producer",
+    "authority",
+    "task",
+    "routing",
+    "payload",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "jpcm/1.0.0"
+    },
+    "envelope_id": {
+      "type": "string",
+      "pattern": "^jpcm_[A-Za-z0-9_-]{16,96}$"
+    },
+    "causality": {
+      "$ref": "#/$defs/Causality"
+    },
+    "event_type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "event_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "$ref": "#/$defs/Producer"
+    },
+    "authority": {
+      "$ref": "#/$defs/Authority"
+    },
+    "task": {
+      "$ref": "#/$defs/TaskRef"
+    },
+    "routing": {
+      "$ref": "#/$defs/Routing"
+    },
+    "context_contract": {
+      "$ref": "#/$defs/ContextContract"
+    },
+    "payload": {
+      "$ref": "#/$defs/Payload"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "default": []
+    },
+    "observability": {
+      "$ref": "#/$defs/Observability"
+    },
+    "attention": {
+      "$ref": "#/$defs/Attention"
+    },
+    "privacy": {
+      "$ref": "#/$defs/Privacy"
+    },
+    "integrity": {
+      "$ref": "#/$defs/Integrity"
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "EventType": {
+      "type": "string",
+      "enum": [
+        "service.card.declared",
+        "service.health.reported",
+        "capability.lease.requested",
+        "capability.lease.granted",
+        "capability.lease.denied",
+        "capability.lease.revoked",
+        "task.proposed",
+        "task.accepted",
+        "task.planned",
+        "task.started",
+        "task.blocked",
+        "task.escalated",
+        "task.resumed",
+        "task.completed",
+        "task.failed",
+        "task.cancelled",
+        "task.superseded",
+        "tool.invocation.requested",
+        "tool.invocation.started",
+        "tool.invocation.completed",
+        "tool.invocation.failed",
+        "tool.invocation.vetoed",
+        "data.query.requested",
+        "data.query.completed",
+        "evidence.attested",
+        "evidence.challenged",
+        "evidence.invalidated",
+        "user.message.received",
+        "user.attention.requested",
+        "user.decision.recorded",
+        "voice.turn.started",
+        "voice.turn.transcribed",
+        "voice.intent.confirmed",
+        "voice.turn.ended",
+        "policy.lesson.proposed",
+        "policy.lesson.quarantined",
+        "policy.lesson.promoted",
+        "policy.lesson.revoked",
+        "self.improvement.proposed",
+        "self.improvement.evaluated",
+        "self.improvement.deployed",
+        "self.improvement.rolled_back",
+        "tool.build.proposed",
+        "tool.build.sandboxed",
+        "tool.build.evaluated",
+        "tool.build.promoted",
+        "tool.build.rejected",
+        "incident.opened",
+        "incident.updated",
+        "incident.resolved",
+        "disaster.mode.entered",
+        "disaster.mode.exited"
+      ]
+    },
+    "Producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "service_kind",
+        "service_version",
+        "instance_id",
+        "service_card_hash"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$"
+        },
+        "service_kind": {
+          "type": "string",
+          "enum": [
+            "jmcp-core",
+            "jpcm-adapter",
+            "jankurai",
+            "jeryu",
+            "jekko",
+            "external-agent",
+            "mcp-server",
+            "a2a-agent",
+            "datastore",
+            "ci-runner",
+            "tool",
+            "ui",
+            "voice-gateway",
+            "human",
+            "other"
+          ]
+        },
+        "service_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-.+][A-Za-z0-9_.-]+)?$"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 160
+        },
+        "service_card_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "tenant_id": {
+          "type": "string"
+        },
+        "host_id": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "public_key_id": {
+          "type": "string"
+        }
+      }
+    },
+    "Authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effect_class",
+        "approval_state",
+        "decision_authority",
+        "capability_leases"
+      ],
+      "properties": {
+        "effect_class": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "read",
+            "analyze",
+            "plan",
+            "write_ephemeral",
+            "write_repo",
+            "execute_sandbox",
+            "execute_networked",
+            "deploy_staging",
+            "deploy_prod",
+            "change_policy",
+            "change_authority",
+            "self_modify",
+            "create_tool",
+            "delete_data",
+            "access_secret",
+            "external_spend"
+          ]
+        },
+        "approval_state": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "requested",
+            "approved",
+            "denied",
+            "expired",
+            "revoked",
+            "human_required",
+            "jmcp_vetoed"
+          ]
+        },
+        "decision_authority": {
+          "type": "string",
+          "enum": [
+            "jmcp",
+            "human",
+            "jankurai",
+            "jeryu",
+            "policy_engine",
+            "incident_commander",
+            "none"
+          ]
+        },
+        "capability_leases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityLease"
+          }
+        },
+        "risk_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "human_decision_id": {
+          "type": "string"
+        }
+      }
+    },
+    "CapabilityLease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lease_id",
+        "subject",
+        "capabilities",
+        "scope",
+        "expires_at",
+        "revocation_topic"
+      ],
+      "properties": {
+        "lease_id": {
+          "type": "string",
+          "pattern": "^lease_[A-Za-z0-9_-]{12,96}$"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "data_classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "secret",
+              "credential",
+              "personal",
+              "regulated",
+              "customer",
+              "source_code",
+              "model_weight",
+              "unknown"
+            ]
+          }
+        },
+        "network": {
+          "type": "string",
+          "enum": [
+            "none",
+            "allowlist",
+            "tenant",
+            "internet",
+            "unknown"
+          ]
+        },
+        "filesystem": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read_only",
+            "scratch",
+            "repo_write",
+            "host_write"
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "max_cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_runtime_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "revocation_topic": {
+          "type": "string"
+        },
+        "issued_by": {
+          "type": "string"
+        },
+        "lease_signature": {
+          "type": "string"
+        }
+      }
+    },
+    "TaskRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "task_kind",
+        "task_state",
+        "priority"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "pattern": "^task_[A-Za-z0-9_-]{12,96}$"
+        },
+        "parent_task_id": {
+          "type": "string"
+        },
+        "task_kind": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "triage",
+            "research",
+            "scope",
+            "plan",
+            "code_change",
+            "review",
+            "test",
+            "build",
+            "deploy",
+            "rollback",
+            "incident",
+            "audit",
+            "refactor",
+            "deduplicate",
+            "security_fix",
+            "data_query",
+            "knowledge_compress",
+            "lesson_learn",
+            "tool_build",
+            "self_improve",
+            "voice_assist",
+            "user_decision",
+            "other"
+          ]
+        },
+        "task_state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "accepted",
+            "planning",
+            "queued",
+            "running",
+            "blocked",
+            "waiting_human",
+            "waiting_external",
+            "verifying",
+            "completed",
+            "failed",
+            "cancelled",
+            "superseded",
+            "rolled_back"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "objective": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "success_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "abort_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deadline": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "work_package_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "Routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel",
+        "topic",
+        "delivery",
+        "priority_lane"
+      ],
+      "properties": {
+        "channel": {
+          "type": "string",
+          "enum": [
+            "command",
+            "event",
+            "query",
+            "attention",
+            "voice",
+            "evidence",
+            "policy",
+            "incident",
+            "audit",
+            "replay"
+          ]
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "at_most_once",
+            "at_least_once",
+            "effectively_once",
+            "replay_only"
+          ]
+        },
+        "priority_lane": {
+          "type": "string",
+          "enum": [
+            "realtime",
+            "high",
+            "normal",
+            "bulk",
+            "archive"
+          ]
+        },
+        "ttl_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requires_ack": {
+          "type": "boolean"
+        },
+        "partition_key": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Causality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "parent_envelope_id": {
+          "type": "string"
+        },
+        "root_task_id": {
+          "type": "string"
+        },
+        "correlation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ContextContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trusted_context_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "untrusted_context_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "redactions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "taint_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "memory_write_allowed": {
+          "type": "boolean"
+        },
+        "memory_promotion_policy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "quarantine",
+            "human_review",
+            "jmcp_review",
+            "automatic_low_risk"
+          ]
+        }
+      }
+    },
+    "Payload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ServiceCardPayload"
+        },
+        {
+          "$ref": "#/$defs/TaskPayload"
+        },
+        {
+          "$ref": "#/$defs/ToolInvocationPayload"
+        },
+        {
+          "$ref": "#/$defs/DataQueryPayload"
+        },
+        {
+          "$ref": "#/$defs/EvidencePayload"
+        },
+        {
+          "$ref": "#/$defs/UserMessagePayload"
+        },
+        {
+          "$ref": "#/$defs/VoicePayload"
+        },
+        {
+          "$ref": "#/$defs/PolicyLessonPayload"
+        },
+        {
+          "$ref": "#/$defs/SelfImprovementPayload"
+        },
+        {
+          "$ref": "#/$defs/ToolBuildPayload"
+        },
+        {
+          "$ref": "#/$defs/IncidentPayload"
+        },
+        {
+          "$ref": "#/$defs/HealthPayload"
+        },
+        {
+          "$ref": "#/$defs/GenericPayload"
+        }
+      ]
+    },
+    "ServiceCardPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "service_card"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "service_card"
+        },
+        "service_card": {
+          "type": "object",
+          "required": [
+            "service_id",
+            "protocol_versions",
+            "capabilities",
+            "data_surfaces",
+            "effect_classes",
+            "health_endpoint"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "service_id": {
+              "type": "string"
+            },
+            "protocol_versions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "data_surfaces": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "effect_classes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Authority/properties/effect_class"
+              }
+            },
+            "health_endpoint": {
+              "type": "string"
+            },
+            "schema_hash": {
+              "type": "string"
+            },
+            "conformance_level": {
+              "type": "string",
+              "enum": [
+                "C0",
+                "C1",
+                "C2",
+                "C3",
+                "C4",
+                "C5"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "TaskPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "task"
+        },
+        "plan": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "result_summary": {
+          "type": "string"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ToolInvocationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "tool_id",
+        "operation"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "tool_invocation"
+        },
+        "tool_id": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "arguments_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "arguments_redacted": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "sandbox_profile": {
+          "type": "string"
+        },
+        "expected_outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "stdout_ref": {
+          "type": "string"
+        },
+        "stderr_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "DataQueryPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "store_id",
+        "query_kind"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "data_query"
+        },
+        "store_id": {
+          "type": "string"
+        },
+        "query_kind": {
+          "type": "string",
+          "enum": [
+            "sql",
+            "nosql",
+            "graph",
+            "vector",
+            "blob",
+            "search",
+            "metadata",
+            "time_series"
+          ]
+        },
+        "query_hash": {
+          "type": "string"
+        },
+        "result_ref": {
+          "type": "string"
+        },
+        "freshness_requirement_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_limit": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "EvidencePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "claim",
+        "evidence_refs"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "evidence"
+        },
+        "claim": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "supports",
+            "contradicts",
+            "inconclusive",
+            "invalid",
+            "stale"
+          ]
+        }
+      }
+    },
+    "UserMessagePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "modality",
+        "message"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "user_message"
+        },
+        "modality": {
+          "type": "string",
+          "enum": [
+            "text",
+            "voice",
+            "ui_click",
+            "api"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "requires_response": {
+          "type": "boolean"
+        },
+        "decision_options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "VoicePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "voice_state"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "voice"
+        },
+        "voice_state": {
+          "type": "string",
+          "enum": [
+            "started",
+            "transcribed",
+            "intent_detected",
+            "confirmation_requested",
+            "confirmed",
+            "denied",
+            "ended"
+          ]
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "speaker_id": {
+          "type": "string"
+        },
+        "confirmation_phrase": {
+          "type": "string"
+        },
+        "audio_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "PolicyLessonPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "lesson_id",
+        "lesson_state",
+        "scope"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "policy_lesson"
+        },
+        "lesson_id": {
+          "type": "string"
+        },
+        "lesson_state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "quarantined",
+            "active",
+            "deprecated",
+            "revoked"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "org",
+            "global",
+            "tenant"
+          ]
+        },
+        "rule_text": {
+          "type": "string"
+        },
+        "counterexamples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expiry": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "SelfImprovementPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "proposal_id",
+        "target",
+        "change_class"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "self_improvement"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "change_class": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "policy",
+            "routing",
+            "schema",
+            "code",
+            "model",
+            "memory",
+            "tool",
+            "ui",
+            "evaluation"
+          ]
+        },
+        "hypothesis": {
+          "type": "string"
+        },
+        "evaluation_plan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rollback_plan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deployment_stage": {
+          "type": "string",
+          "enum": [
+            "quarantine",
+            "shadow",
+            "canary",
+            "staging",
+            "production",
+            "rollback"
+          ]
+        }
+      }
+    },
+    "ToolBuildPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "tool_proposal_id",
+        "capability_gap"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "tool_build"
+        },
+        "tool_proposal_id": {
+          "type": "string"
+        },
+        "capability_gap": {
+          "type": "string"
+        },
+        "reuse_search_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "implementation_repo": {
+          "type": "string"
+        },
+        "sandbox_profile": {
+          "type": "string"
+        },
+        "sbom_ref": {
+          "type": "string"
+        },
+        "provenance_ref": {
+          "type": "string"
+        },
+        "promotion_state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "building",
+            "quarantined",
+            "evaluating",
+            "promoted",
+            "rejected",
+            "deprecated"
+          ]
+        }
+      }
+    },
+    "IncidentPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "incident_id",
+        "severity"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "incident"
+        },
+        "incident_id": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "sev0",
+            "sev1",
+            "sev2",
+            "sev3",
+            "sev4"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "blast_radius": {
+          "type": "string"
+        },
+        "actions_taken": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "HealthPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_kind",
+        "status"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "health"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "healthy",
+            "degraded",
+            "unhealthy",
+            "unknown"
+          ]
+        },
+        "latency_ms": {
+          "type": "number"
+        },
+        "queue_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "degraded_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "GenericPayload": {
+      "type": "object",
+      "required": [
+        "payload_kind"
+      ],
+      "properties": {
+        "payload_kind": {
+          "const": "generic"
+        },
+        "data": {}
+      },
+      "additionalProperties": true
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "kind",
+        "uri",
+        "hash",
+        "produced_by",
+        "produced_at"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "log",
+            "trace",
+            "metric",
+            "test_result",
+            "screenshot",
+            "diff",
+            "artifact",
+            "attestation",
+            "signature",
+            "policy_decision",
+            "human_decision",
+            "benchmark",
+            "schema_validation",
+            "sbom",
+            "provenance",
+            "voice_record",
+            "other"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "produced_by": {
+          "type": "string"
+        },
+        "produced_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fresh_until": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replay_command_ref": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "logs_ref": {
+          "type": "string"
+        },
+        "dashboard_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Attention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user_visible": {
+          "type": "boolean"
+        },
+        "attention_class": {
+          "type": "string",
+          "enum": [
+            "none",
+            "digest",
+            "decision",
+            "urgent",
+            "incident",
+            "voice_confirm"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "minimum_summary": {
+          "type": "string"
+        },
+        "decision_deadline": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "default_action": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "pause",
+            "rollback",
+            "escalate",
+            "do_nothing",
+            "deny"
+          ]
+        }
+      }
+    },
+    "Privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "redaction_profile": {
+          "type": "string"
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_allowed": {
+          "type": "boolean"
+        },
+        "tenant_isolation": {
+          "type": "string"
+        }
+      }
+    },
+    "Integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalization",
+        "content_hash",
+        "signature"
+      ],
+      "properties": {
+        "canonicalization": {
+          "const": "jcs-rfc8785"
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "signature": {
+          "type": "object",
+          "required": [
+            "alg",
+            "kid",
+            "sig"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "alg": {
+              "type": "string",
+              "enum": [
+                "EdDSA",
+                "ES256",
+                "RS256"
+              ]
+            },
+            "kid": {
+              "type": "string"
+            },
+            "sig": {
+              "type": "string"
+            }
+          }
+        },
+        "previous_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

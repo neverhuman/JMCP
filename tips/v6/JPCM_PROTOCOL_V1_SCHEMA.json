@@ -1,0 +1,2818 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neverhuman.internal/jmcp/schemas/jpcm/1.0.0/jpcm-protocol.schema.json",
+  "title": "JPCM-1.0.0 Joint Process Control Messaging Protocol Schema",
+  "description": "Normative JSON Schema for the mandatory envelope and core payloads used by all services, tools, agents, stores, frontends, voice surfaces, and adapters communicating with the Joint Master Control Plane (JMCP).",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Envelope"
+    },
+    {
+      "$ref": "#/$defs/ServiceCard"
+    },
+    {
+      "$ref": "#/$defs/ToolCard"
+    },
+    {
+      "$ref": "#/$defs/DataCard"
+    },
+    {
+      "$ref": "#/$defs/ModelCard"
+    },
+    {
+      "$ref": "#/$defs/WorkOrder"
+    },
+    {
+      "$ref": "#/$defs/Task"
+    },
+    {
+      "$ref": "#/$defs/CapabilityLease"
+    },
+    {
+      "$ref": "#/$defs/ContextContract"
+    },
+    {
+      "$ref": "#/$defs/EvidenceBundle"
+    },
+    {
+      "$ref": "#/$defs/AttentionPacket"
+    },
+    {
+      "$ref": "#/$defs/ApprovalPacket"
+    },
+    {
+      "$ref": "#/$defs/MemoryRecord"
+    },
+    {
+      "$ref": "#/$defs/SelfImprovementProposal"
+    },
+    {
+      "$ref": "#/$defs/ToolBuildProposal"
+    },
+    {
+      "$ref": "#/$defs/ConformanceReport"
+    }
+  ],
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+=-]{0,255}$"
+    },
+    "UUIDOrULID": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]{20,64}$"
+    },
+    "ISOTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "URI": {
+      "type": "string",
+      "format": "uri"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^(sha256|sha384|sha512|blake3):[A-Fa-f0-9]{32,128}$"
+    },
+    "Signature": {
+      "type": "object",
+      "required": [
+        "alg",
+        "key_id",
+        "signature"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "alg": {
+          "type": "string",
+          "enum": [
+            "ed25519",
+            "ecdsa-p256-sha256",
+            "rsa-pss-sha256",
+            "sigstore-bundle",
+            "none-for-dev-only"
+          ]
+        },
+        "key_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cert_chain_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "default": []
+        },
+        "signed_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "ActorRef": {
+      "type": "object",
+      "required": [
+        "actor_id",
+        "actor_type",
+        "trust_tier"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "human",
+            "jmcp_core",
+            "service",
+            "tool",
+            "agent",
+            "adapter",
+            "scheduler",
+            "policy_engine",
+            "voice_surface",
+            "frontend",
+            "ci_runner",
+            "datastore",
+            "model",
+            "unknown"
+          ]
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "owner": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "trust_tier": {
+          "type": "string",
+          "enum": [
+            "root",
+            "jmcp-managed",
+            "qualified",
+            "sandboxed",
+            "untrusted",
+            "quarantined"
+          ]
+        },
+        "authn_method": {
+          "type": "string",
+          "enum": [
+            "mtls-spiffe",
+            "oauth2",
+            "oidc",
+            "api-key",
+            "ssh-signed",
+            "workload-identity",
+            "local-dev",
+            "unknown"
+          ]
+        },
+        "delegated_from": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "AuthorityRef": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "mode",
+        "autonomy_tier",
+        "policy_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "$ref": "#/$defs/UUIDOrULID"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "deny",
+            "observe",
+            "suggest",
+            "prepare",
+            "execute",
+            "promote",
+            "rollback",
+            "quarantine"
+          ]
+        },
+        "autonomy_tier": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "policy_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][A-Za-z0-9_.-]+)?$"
+        },
+        "requires_user_approval": {
+          "type": "boolean"
+        },
+        "approval_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "lease_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "rationale_hash": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "Risk": {
+      "type": "object",
+      "required": [
+        "tier",
+        "impact",
+        "reversibility",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": [
+            "R0-observe",
+            "R1-local-safe",
+            "R2-reversible",
+            "R3-sensitive",
+            "R4-production-or-expensive",
+            "R5-irreversible-or-external"
+          ]
+        },
+        "impact": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "none",
+              "cost",
+              "latency",
+              "availability",
+              "security",
+              "privacy",
+              "legal",
+              "reputation",
+              "data-integrity",
+              "user-trust",
+              "prod",
+              "cross-repo",
+              "credential",
+              "financial",
+              "human-safety"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "reversibility": {
+          "type": "string",
+          "enum": [
+            "trivial",
+            "reversible",
+            "requires-rollback",
+            "hard-to-reverse",
+            "irreversible"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "worst_case": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "blast_radius": {
+          "type": "string",
+          "enum": [
+            "single-task",
+            "single-repo",
+            "multi-repo",
+            "tenant",
+            "organization",
+            "external-users",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "Delivery": {
+      "type": "object",
+      "required": [
+        "class",
+        "idempotency_key"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "type": "string",
+          "enum": [
+            "telemetry-at-most-once",
+            "event-at-least-once",
+            "command-exactly-once-effect",
+            "audit-append-only",
+            "ui-low-latency",
+            "voice-low-latency"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 256
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "causal_parents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UUIDOrULID"
+          },
+          "default": []
+        },
+        "ttl_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "backoff": {
+              "type": "string",
+              "enum": [
+                "none",
+                "fixed",
+                "exponential",
+                "exponential-jitter"
+              ]
+            }
+          }
+        },
+        "ordering_key": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "DataClass": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "secret",
+        "regulated",
+        "credential",
+        "personal",
+        "source-code",
+        "customer-data",
+        "model-context",
+        "unknown"
+      ]
+    },
+    "SchemaRef": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "uri"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][A-Za-z0-9_.-]+)?$"
+        },
+        "uri": {
+          "$ref": "#/$defs/URI"
+        },
+        "compatibility": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "backward",
+            "forward",
+            "transcodable",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "ServiceCard": {
+      "type": "object",
+      "required": [
+        "card_type",
+        "jpcm_version",
+        "service_id",
+        "service_type",
+        "owner",
+        "version",
+        "capabilities",
+        "endpoints",
+        "security",
+        "limits",
+        "health"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "card_type": {
+          "const": "service_card"
+        },
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "service_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "service_type": {
+          "type": "string",
+          "enum": [
+            "jmcp-core",
+            "adapter",
+            "mcp-host",
+            "mcp-server",
+            "a2a-agent",
+            "jeryu",
+            "jankurai",
+            "jekko-zyal",
+            "ci",
+            "git",
+            "datastore",
+            "model-router",
+            "browser-agent",
+            "voice",
+            "frontend",
+            "policy",
+            "observability",
+            "scheduler",
+            "evidence-store",
+            "custom"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityDescriptor"
+          },
+          "minItems": 1
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        },
+        "security": {
+          "$ref": "#/$defs/ServiceSecurity"
+        },
+        "limits": {
+          "$ref": "#/$defs/ServiceLimits"
+        },
+        "health": {
+          "$ref": "#/$defs/Health"
+        },
+        "schemas_supported": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SchemaRef"
+          },
+          "default": []
+        },
+        "data_access": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          },
+          "default": []
+        },
+        "qualifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Qualification"
+          },
+          "default": []
+        },
+        "deprecation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deprecated": {
+              "type": "boolean"
+            },
+            "sunset_at": {
+              "$ref": "#/$defs/ISOTime"
+            },
+            "replacement_service_id": {
+              "$ref": "#/$defs/Identifier"
+            }
+          }
+        }
+      }
+    },
+    "CapabilityDescriptor": {
+      "type": "object",
+      "required": [
+        "capability",
+        "side_effect_class",
+        "risk_ceiling"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "search",
+            "read",
+            "write",
+            "edit-code",
+            "create-repo",
+            "run-tests",
+            "run-ci",
+            "deploy",
+            "rollback",
+            "delete",
+            "send-message",
+            "voice-transcribe",
+            "voice-synthesize",
+            "browse-web",
+            "query-db",
+            "mutate-db",
+            "invoke-agent",
+            "build-tool",
+            "self-improve",
+            "publish-lesson",
+            "change-policy",
+            "change-protocol",
+            "manage-secret",
+            "manage-lease",
+            "approve",
+            "quarantine",
+            "custom"
+          ]
+        },
+        "custom_name": {
+          "type": "string"
+        },
+        "side_effect_class": {
+          "type": "string",
+          "enum": [
+            "none",
+            "local",
+            "workspace",
+            "repo",
+            "datastore",
+            "external-network",
+            "money",
+            "production",
+            "identity",
+            "policy",
+            "protocol",
+            "human-visible"
+          ]
+        },
+        "risk_ceiling": {
+          "$ref": "#/$defs/Risk"
+        },
+        "requires_lease": {
+          "type": "boolean",
+          "const": true
+        },
+        "requires_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "input_schema": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "output_schema": {
+          "$ref": "#/$defs/SchemaRef"
+        }
+      }
+    },
+    "Endpoint": {
+      "type": "object",
+      "required": [
+        "transport",
+        "address"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": [
+            "nats-jetstream",
+            "grpc",
+            "https",
+            "websocket",
+            "sse",
+            "stdio-adapter",
+            "unix-socket",
+            "local-dev"
+          ]
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auth": {
+          "type": "string",
+          "enum": [
+            "mtls",
+            "spiffe",
+            "oidc",
+            "oauth2",
+            "signed-message",
+            "none-dev-only"
+          ]
+        }
+      }
+    },
+    "ServiceSecurity": {
+      "type": "object",
+      "required": [
+        "identity_provider",
+        "sandbox",
+        "secrets_policy",
+        "network_policy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identity_provider": {
+          "type": "string"
+        },
+        "sandbox": {
+          "type": "string",
+          "enum": [
+            "none-dev-only",
+            "process",
+            "container",
+            "microvm",
+            "wasm",
+            "browser-profile",
+            "remote-isolate",
+            "hardware-tee"
+          ]
+        },
+        "secrets_policy": {
+          "type": "string",
+          "enum": [
+            "no-secrets",
+            "brokered-only",
+            "scoped-lease-only",
+            "ambient-not-allowed"
+          ]
+        },
+        "network_policy": {
+          "type": "string",
+          "enum": [
+            "deny-all",
+            "allowlisted-egress",
+            "tenant-internal",
+            "internet-readonly",
+            "internet-restricted"
+          ]
+        },
+        "sbom_ref": {
+          "$ref": "#/$defs/URI"
+        },
+        "provenance_ref": {
+          "$ref": "#/$defs/URI"
+        },
+        "slsa_level": {
+          "type": "string",
+          "enum": [
+            "none",
+            "build-L1",
+            "build-L2",
+            "build-L3",
+            "source-L1",
+            "source-L2",
+            "source-L3",
+            "unknown"
+          ]
+        },
+        "last_redteam_at": {
+          "$ref": "#/$defs/ISOTime"
+        }
+      }
+    },
+    "ServiceLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_concurrent_tasks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cpu_ms_per_task": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_memory_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_tokens_per_task": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cost_usd_per_day": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rate_limits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Health": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "healthy",
+            "degraded",
+            "unhealthy",
+            "quarantined",
+            "unknown"
+          ]
+        },
+        "last_heartbeat_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "slo_status": {
+          "type": "string"
+        },
+        "error_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "Qualification": {
+      "type": "object",
+      "required": [
+        "kind",
+        "status",
+        "evidence_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "conformance",
+            "security-review",
+            "performance",
+            "privacy-review",
+            "model-eval",
+            "red-team",
+            "supply-chain",
+            "human-approved"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "expired",
+            "waived",
+            "pending"
+          ]
+        },
+        "evidence_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/ISOTime"
+        }
+      }
+    },
+    "ToolCard": {
+      "type": "object",
+      "required": [
+        "card_type",
+        "jpcm_version",
+        "tool_id",
+        "service_id",
+        "version",
+        "actions",
+        "data_access",
+        "side_effects",
+        "qualification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "card_type": {
+          "const": "tool_card"
+        },
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "tool_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "service_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "version": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityDescriptor"
+          },
+          "minItems": 1
+        },
+        "data_access": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "side_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "qualification": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Qualification"
+          }
+        },
+        "build_vs_buy_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "replacement_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "known_failure_modes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "DataCard": {
+      "type": "object",
+      "required": [
+        "card_type",
+        "jpcm_version",
+        "data_id",
+        "store_type",
+        "owner",
+        "classification",
+        "access_modes",
+        "schema_ref",
+        "retention"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "card_type": {
+          "const": "data_card"
+        },
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "data_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "store_type": {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "timescale",
+            "sqlite",
+            "graph",
+            "vector",
+            "object",
+            "log",
+            "event-stream",
+            "file-system",
+            "git",
+            "secrets",
+            "warehouse",
+            "nosql",
+            "external-api",
+            "unknown"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "classification": {
+          "$ref": "#/$defs/DataClass"
+        },
+        "access_modes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "append",
+              "delete",
+              "admin",
+              "search",
+              "sample",
+              "redacted-read"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "schema_ref": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "retention": {
+          "type": "object",
+          "required": [
+            "policy",
+            "ttl_days"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "policy": {
+              "type": "string",
+              "enum": [
+                "ephemeral",
+                "task-bound",
+                "audit",
+                "legal-hold",
+                "forever-until-revoked",
+                "custom"
+              ]
+            },
+            "ttl_days": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "redaction_supported": {
+              "type": "boolean"
+            }
+          }
+        },
+        "lineage_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "ModelCard": {
+      "type": "object",
+      "required": [
+        "card_type",
+        "jpcm_version",
+        "model_id",
+        "provider",
+        "model_class",
+        "allowed_use",
+        "disallowed_use",
+        "evals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "card_type": {
+          "const": "model_card"
+        },
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "model_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model_class": {
+          "type": "string",
+          "enum": [
+            "llm",
+            "vlm",
+            "embedding",
+            "reranker",
+            "speech-to-text",
+            "text-to-speech",
+            "guardrail",
+            "planner",
+            "code-agent",
+            "custom"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "context_window_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowed_use": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disallowed_use": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Qualification"
+          }
+        },
+        "cost_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "data_residency": {
+          "type": "string"
+        }
+      }
+    },
+    "ContextContract": {
+      "type": "object",
+      "required": [
+        "context_contract_id",
+        "scope",
+        "allowed_sources",
+        "forbidden_sources",
+        "max_context_tokens",
+        "expiry"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "context_contract_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "allowed_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "forbidden_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "max_context_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redaction_policy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "secrets",
+            "personal",
+            "repo-sensitive",
+            "regulated",
+            "custom"
+          ]
+        },
+        "memory_policy": {
+          "type": "string",
+          "enum": [
+            "read-none",
+            "read-task",
+            "read-project",
+            "read-org",
+            "write-proposed-only",
+            "write-evidence-backed"
+          ]
+        },
+        "expiry": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    },
+    "CapabilityLease": {
+      "type": "object",
+      "required": [
+        "lease_id",
+        "issued_to",
+        "issued_by",
+        "capabilities",
+        "scope",
+        "issued_at",
+        "expires_at",
+        "constraints",
+        "revocation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lease_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "issued_to": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "issued_by": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityDescriptor"
+          },
+          "minItems": 1
+        },
+        "scope": {
+          "type": "object",
+          "required": [
+            "tenant",
+            "cell",
+            "targets"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tenant": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "cell": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "minItems": 1
+            },
+            "task_refs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              }
+            },
+            "work_order_refs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              }
+            }
+          }
+        },
+        "issued_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_cost_usd": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_runtime_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "network": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "allowlist",
+                "readonly-internet",
+                "restricted-internet"
+              ]
+            },
+            "file_write_roots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "forbidden_effects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required_evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "approval_required_for": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "revocation": {
+          "type": "object",
+          "required": [
+            "revocable",
+            "revocation_subject"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "revocable": {
+              "type": "boolean",
+              "const": true
+            },
+            "revocation_subject": {
+              "type": "string"
+            },
+            "revoked_at": {
+              "$ref": "#/$defs/ISOTime"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        "signature": {
+          "$ref": "#/$defs/Signature"
+        }
+      }
+    },
+    "WorkOrder": {
+      "type": "object",
+      "required": [
+        "work_order_id",
+        "title",
+        "intent",
+        "origin",
+        "priority",
+        "risk",
+        "state",
+        "created_at",
+        "success_criteria"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "work_order_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "intent": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "human-text",
+            "human-voice",
+            "autonomous-policy",
+            "monitor",
+            "incident",
+            "scheduler",
+            "self-improvement",
+            "external-webhook",
+            "repo-signal"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "accepted",
+            "planned",
+            "active",
+            "blocked",
+            "awaiting-user",
+            "verifying",
+            "complete",
+            "failed",
+            "canceled",
+            "quarantined",
+            "archived"
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "deadline": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_cost_usd": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_agent_hours": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_wallclock_ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "success_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "non_goals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "attention_policy": {
+          "type": "string",
+          "enum": [
+            "silent-unless-risk",
+            "summarize-on-complete",
+            "ask-before-side-effects",
+            "interactive",
+            "incident-mode"
+          ]
+        }
+      }
+    },
+    "TaskKind": {
+      "type": "string",
+      "enum": [
+        "research",
+        "knowledge-compression",
+        "architecture-design",
+        "code-change",
+        "repo-create",
+        "refactor",
+        "bug-hunt",
+        "security-scan",
+        "dependency-update",
+        "test-generation",
+        "ci-run",
+        "release",
+        "deploy",
+        "rollback",
+        "incident-diagnosis",
+        "data-query",
+        "data-migration",
+        "memory-read",
+        "memory-write-proposal",
+        "lesson-publish",
+        "policy-change",
+        "protocol-change",
+        "adapter-registration",
+        "service-onboarding",
+        "tool-evaluation",
+        "tool-build-proposal",
+        "tool-build",
+        "tool-retirement",
+        "self-improvement-proposal",
+        "self-improvement-experiment",
+        "self-improvement-promotion",
+        "model-route",
+        "agent-delegation",
+        "browser-work",
+        "voice-interaction",
+        "user-approval",
+        "cost-optimization",
+        "observability-rule",
+        "conformance-test",
+        "red-team",
+        "custom"
+      ]
+    },
+    "Task": {
+      "type": "object",
+      "required": [
+        "task_id",
+        "work_order_id",
+        "kind",
+        "title",
+        "state",
+        "priority",
+        "risk",
+        "created_at",
+        "owner",
+        "inputs",
+        "outputs_expected",
+        "guards"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "parent_task_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "kind": {
+          "$ref": "#/$defs/TaskKind"
+        },
+        "custom_kind": {
+          "type": "string",
+          "pattern": "^x-[A-Za-z0-9_.-]+$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "accepted",
+            "planned",
+            "leased",
+            "queued",
+            "running",
+            "blocked",
+            "awaiting-evidence",
+            "awaiting-user",
+            "verifying",
+            "completed",
+            "failed",
+            "canceled",
+            "rolled-back",
+            "quarantined",
+            "archived"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "owner": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "assignees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActorRef"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          }
+        },
+        "outputs_expected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "guards": {
+          "type": "object",
+          "required": [
+            "required_leases",
+            "required_evidence",
+            "approval_policy"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "required_leases": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              }
+            },
+            "required_evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "approval_policy": {
+              "type": "string",
+              "enum": [
+                "none",
+                "on-risk-change",
+                "before-external-effect",
+                "before-production",
+                "before-policy-change",
+                "before-protocol-change",
+                "before-memory-promotion",
+                "always"
+              ]
+            },
+            "sandbox_profile": {
+              "type": "string",
+              "enum": [
+                "none-readonly",
+                "workspace",
+                "container",
+                "microvm",
+                "browser-isolate",
+                "remote-runner",
+                "wasm"
+              ]
+            },
+            "rollback_plan_required": {
+              "type": "boolean"
+            }
+          }
+        },
+        "task_spec": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ResearchSpec"
+            },
+            {
+              "$ref": "#/$defs/CodeChangeSpec"
+            },
+            {
+              "$ref": "#/$defs/SelfImprovementProposal"
+            },
+            {
+              "$ref": "#/$defs/ToolBuildProposal"
+            },
+            {
+              "$ref": "#/$defs/VoiceSpec"
+            },
+            {
+              "$ref": "#/$defs/ProtocolChangeSpec"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "evidence_bundle_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "attention_packet_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "state_history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateTransition"
+          }
+        }
+      }
+    },
+    "StateTransition": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "at",
+        "by",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "by": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence_ref": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "ArtifactRef": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "artifact_type",
+        "uri",
+        "digest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "file",
+            "repo",
+            "commit",
+            "branch",
+            "pull-request",
+            "build",
+            "test-report",
+            "trace",
+            "log",
+            "metric",
+            "dataset",
+            "schema",
+            "memory",
+            "lesson",
+            "policy",
+            "diagram",
+            "audio",
+            "transcript",
+            "tool",
+            "container-image",
+            "sbom",
+            "attestation",
+            "web-page",
+            "custom"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "data_class": {
+          "$ref": "#/$defs/DataClass"
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        }
+      }
+    },
+    "ResearchSpec": {
+      "type": "object",
+      "required": [
+        "questions",
+        "sources_allowed",
+        "freshness_required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "sources_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "web",
+              "repo",
+              "docs",
+              "papers",
+              "file-library",
+              "datastore",
+              "logs",
+              "memory",
+              "human"
+            ]
+          }
+        },
+        "freshness_required": {
+          "type": "string",
+          "enum": [
+            "current",
+            "recent-30d",
+            "recent-180d",
+            "stable",
+            "historical"
+          ]
+        },
+        "citation_required": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "CodeChangeSpec": {
+      "type": "object",
+      "required": [
+        "repositories",
+        "change_type",
+        "test_policy",
+        "promotion_policy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "repositories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          },
+          "minItems": 1
+        },
+        "change_type": {
+          "type": "string",
+          "enum": [
+            "bugfix",
+            "feature",
+            "refactor",
+            "security",
+            "dependency",
+            "docs",
+            "test",
+            "performance",
+            "cleanup",
+            "repo-create"
+          ]
+        },
+        "files_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files_forbidden": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "test_policy": {
+          "type": "string",
+          "enum": [
+            "none-observe-only",
+            "unit",
+            "integration",
+            "full-ci",
+            "security-ci",
+            "production-simulation"
+          ]
+        },
+        "promotion_policy": {
+          "type": "string",
+          "enum": [
+            "draft-only",
+            "branch-only",
+            "pull-request",
+            "auto-merge-if-green",
+            "human-required"
+          ]
+        }
+      }
+    },
+    "VoiceSpec": {
+      "type": "object",
+      "required": [
+        "audio_ref",
+        "language",
+        "asr_model",
+        "confirmation_policy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "audio_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "language": {
+          "type": "string"
+        },
+        "asr_model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "speaker_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "intent_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confirmation_policy": {
+          "type": "string",
+          "enum": [
+            "none-for-low-risk",
+            "confirm-ambiguous",
+            "confirm-side-effects",
+            "confirm-all"
+          ]
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "redacted_transcript": {
+          "type": "string"
+        }
+      }
+    },
+    "ProtocolChangeSpec": {
+      "type": "object",
+      "required": [
+        "current_version",
+        "proposed_version",
+        "compatibility_plan",
+        "migration_plan",
+        "conformance_plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "current_version": {
+          "type": "string"
+        },
+        "proposed_version": {
+          "type": "string"
+        },
+        "breaking_changes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "compatibility_plan": {
+          "type": "string"
+        },
+        "migration_plan": {
+          "type": "string"
+        },
+        "conformance_plan": {
+          "type": "string"
+        },
+        "rollback_plan": {
+          "type": "string"
+        }
+      }
+    },
+    "EvidenceBundle": {
+      "type": "object",
+      "required": [
+        "evidence_bundle_id",
+        "task_id",
+        "quality_tier",
+        "items",
+        "verdict",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "evidence_bundle_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "task_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "quality_tier": {
+          "type": "string",
+          "enum": [
+            "E0-claim",
+            "E1-log",
+            "E2-test",
+            "E3-independent-check",
+            "E4-reproducible-attestation",
+            "E5-formal-or-human-approved"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceItem"
+          },
+          "minItems": 1
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "supports",
+            "contradicts",
+            "inconclusive",
+            "quarantine"
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "reviewed_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActorRef"
+          }
+        },
+        "promotion_allowed": {
+          "type": "boolean"
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "EvidenceItem": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "evidence_type",
+        "artifact_ref",
+        "producer",
+        "collected_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "transcript",
+            "log",
+            "trace",
+            "metric",
+            "test-result",
+            "ci-run",
+            "static-analysis",
+            "dynamic-analysis",
+            "security-scan",
+            "sbom",
+            "provenance",
+            "signature",
+            "screenshot",
+            "diff",
+            "patch",
+            "repro-script",
+            "human-review",
+            "policy-decision",
+            "redteam-result",
+            "cost-report",
+            "benchmark",
+            "runtime-observation"
+          ]
+        },
+        "artifact_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "producer": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "collected_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "trust": {
+          "type": "string",
+          "enum": [
+            "self-reported",
+            "jmcp-observed",
+            "independent-verifier",
+            "trusted-root",
+            "human"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      }
+    },
+    "AttentionPacket": {
+      "type": "object",
+      "required": [
+        "attention_packet_id",
+        "work_order_id",
+        "attention_level",
+        "user_visible_summary",
+        "decision_needed",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attention_packet_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "attention_level": {
+          "type": "string",
+          "enum": [
+            "silent",
+            "digest",
+            "heads-up",
+            "decision",
+            "urgent",
+            "incident"
+          ]
+        },
+        "user_visible_summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "decision_needed": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "option_id",
+              "label",
+              "effect",
+              "risk"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "option_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "label": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string"
+              },
+              "risk": {
+                "$ref": "#/$defs/Risk"
+              }
+            }
+          }
+        },
+        "drilldown_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "modality": {
+          "type": "string",
+          "enum": [
+            "text",
+            "voice",
+            "ui-card",
+            "notification",
+            "api"
+          ]
+        }
+      }
+    },
+    "ApprovalPacket": {
+      "type": "object",
+      "required": [
+        "approval_id",
+        "work_order_id",
+        "task_id",
+        "requested_effect",
+        "risk",
+        "options",
+        "status",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "task_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "requested_effect": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "recommended_option": {
+          "type": "string"
+        },
+        "evidence_bundle_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "approved",
+            "denied",
+            "expired",
+            "delegated",
+            "canceled"
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "resolved_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "resolved_by": {
+          "$ref": "#/$defs/ActorRef"
+        }
+      }
+    },
+    "MemoryRecord": {
+      "type": "object",
+      "required": [
+        "memory_id",
+        "memory_type",
+        "scope",
+        "claim",
+        "provenance",
+        "confidence",
+        "ttl",
+        "promotion_state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "memory_type": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "lesson",
+            "preference",
+            "anti-pattern",
+            "tool-knowledge",
+            "repo-knowledge",
+            "process-metric",
+            "policy-note",
+            "voice-profile",
+            "temporary-context"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "task",
+            "repo",
+            "project",
+            "org",
+            "global",
+            "personal"
+          ]
+        },
+        "claim": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceItem"
+          },
+          "minItems": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ttl": {
+          "type": "object",
+          "required": [
+            "expires_at",
+            "refresh_policy"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "expires_at": {
+              "$ref": "#/$defs/ISOTime"
+            },
+            "refresh_policy": {
+              "type": "string",
+              "enum": [
+                "never",
+                "on-use",
+                "scheduled",
+                "on-contradiction"
+              ]
+            }
+          }
+        },
+        "promotion_state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "quarantined",
+            "active",
+            "shadow",
+            "deprecated",
+            "revoked"
+          ]
+        },
+        "contradictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        }
+      }
+    },
+    "SelfImprovementProposal": {
+      "type": "object",
+      "required": [
+        "proposal_id",
+        "improvement_type",
+        "hypothesis",
+        "target_component",
+        "expected_gain",
+        "risk",
+        "experiment_plan",
+        "promotion_gates",
+        "rollback_plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposal_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "improvement_type": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "policy",
+            "scheduler",
+            "router",
+            "memory-index",
+            "schema",
+            "protocol",
+            "adapter",
+            "model-selection",
+            "tool",
+            "ux",
+            "observability-rule",
+            "cost-control",
+            "security-control"
+          ]
+        },
+        "hypothesis": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "target_component": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "expected_gain": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "experiment_plan": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "promotion_gates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "rollback_plan": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "shadow_mode_required": {
+          "type": "boolean",
+          "default": true
+        },
+        "human_approval_required": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "ToolBuildProposal": {
+      "type": "object",
+      "required": [
+        "proposal_id",
+        "tool_name",
+        "problem",
+        "build_vs_buy",
+        "spec",
+        "risk",
+        "security_plan",
+        "evaluation_plan",
+        "promotion_plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposal_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "tool_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "problem": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "build_vs_buy": {
+          "type": "object",
+          "required": [
+            "decision",
+            "alternatives_considered",
+            "score"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "build",
+                "buy",
+                "wrap",
+                "do-not-build",
+                "research-more"
+              ]
+            },
+            "alternatives_considered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "spec": {
+          "type": "object",
+          "required": [
+            "inputs",
+            "outputs",
+            "side_effects",
+            "api",
+            "owner"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "side_effects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            }
+          }
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "security_plan": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "evaluation_plan": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "promotion_plan": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "retirement_plan": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    },
+    "ConformanceReport": {
+      "type": "object",
+      "required": [
+        "report_id",
+        "jpcm_version",
+        "subject_id",
+        "suite_version",
+        "status",
+        "tests",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "report_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "subject_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "suite_version": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "waived",
+            "partial",
+            "quarantined"
+          ]
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "test_id",
+              "name",
+              "status"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "test_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "passed",
+                  "failed",
+                  "skipped",
+                  "waived"
+                ]
+              },
+              "evidence_ref": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/ISOTime"
+        }
+      }
+    },
+    "Envelope": {
+      "type": "object",
+      "required": [
+        "jpcm_version",
+        "message_id",
+        "message_family",
+        "message_type",
+        "source",
+        "subject",
+        "issued_at",
+        "tenant",
+        "cell",
+        "trace_id",
+        "correlation_id",
+        "actor",
+        "authority",
+        "risk",
+        "data_class",
+        "delivery",
+        "schema_ref",
+        "payload_hash",
+        "signature",
+        "payload"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "jpcm_version": {
+          "const": "1.0.0"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUIDOrULID"
+        },
+        "message_family": {
+          "type": "string",
+          "enum": [
+            "intent",
+            "command",
+            "event",
+            "observation",
+            "task",
+            "lease",
+            "evidence",
+            "attention",
+            "approval",
+            "memory",
+            "service",
+            "tool",
+            "data",
+            "model",
+            "voice",
+            "policy",
+            "protocol",
+            "conformance",
+            "audit",
+            "error"
+          ]
+        },
+        "message_type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{2,127}$"
+        },
+        "source": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "^jpcm\\.[a-z0-9_.-]+(\\.[A-Za-z0-9_.:@+=-]+)*$"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/ISOTime"
+        },
+        "tenant": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "cell": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/UUIDOrULID"
+        },
+        "correlation_id": {
+          "$ref": "#/$defs/UUIDOrULID"
+        },
+        "causation_id": {
+          "$ref": "#/$defs/UUIDOrULID"
+        },
+        "actor": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "authority": {
+          "$ref": "#/$defs/AuthorityRef"
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "data_class": {
+          "$ref": "#/$defs/DataClass"
+        },
+        "delivery": {
+          "$ref": "#/$defs/Delivery"
+        },
+        "context_contract_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "lease_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "work_order_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "task_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "schema_ref": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "payload_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "signature": {
+          "$ref": "#/$defs/Signature"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ServiceCard"
+            },
+            {
+              "$ref": "#/$defs/ToolCard"
+            },
+            {
+              "$ref": "#/$defs/DataCard"
+            },
+            {
+              "$ref": "#/$defs/ModelCard"
+            },
+            {
+              "$ref": "#/$defs/WorkOrder"
+            },
+            {
+              "$ref": "#/$defs/Task"
+            },
+            {
+              "$ref": "#/$defs/CapabilityLease"
+            },
+            {
+              "$ref": "#/$defs/ContextContract"
+            },
+            {
+              "$ref": "#/$defs/EvidenceBundle"
+            },
+            {
+              "$ref": "#/$defs/AttentionPacket"
+            },
+            {
+              "$ref": "#/$defs/ApprovalPacket"
+            },
+            {
+              "$ref": "#/$defs/MemoryRecord"
+            },
+            {
+              "$ref": "#/$defs/SelfImprovementProposal"
+            },
+            {
+              "$ref": "#/$defs/ToolBuildProposal"
+            },
+            {
+              "$ref": "#/$defs/ConformanceReport"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

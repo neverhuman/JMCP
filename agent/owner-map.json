@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "system": "JMCP",
+  "protocol": "JCP/1.0.0",
+  "transport_profile": "JPCM",
+  "owners": {
+    "governance": {
+      "paths": [
+        "AGENT_CHAT.md",
+        "AGENT_WORK_PLAN.md",
+        "AGENTS.md",
+        "agent/**",
+        "docs/**",
+        "paper/**"
+      ],
+      "responsibilities": [
+        "agent coordination",
+        "documentation governance",
+        "proof lane definitions",
+        "audit policy",
+        "architecture/security/testing/operations documentation",
+        "final architecture paper"
+      ]
+    },
+    "core-runtime": {
+      "paths": [
+        "crates/**"
+      ],
+      "responsibilities": [
+        "Rust backend",
+        "embedded SQLite integration",
+        "in-process replayable event bus",
+        "JCP/1.0.0 runtime enforcement"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "dashboard": {
+      "paths": [
+        "apps/**"
+      ],
+      "responsibilities": [
+        "React dashboard",
+        "operator approvals",
+        "runtime observability"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "tui": {
+      "paths": [
+        "apps/**",
+        "crates/**"
+      ],
+      "responsibilities": [
+        "Rust TUI",
+        "local operator workflows"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "adapters": {
+      "paths": [
+        "crates/**",
+        "apps/**"
+      ],
+      "responsibilities": [
+        "Telegram text intake and approvals",
+        "local Jankurai adapter",
+        "local Jeryu adapter",
+        "local Jekko adapter"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    }
+  }
+}
+

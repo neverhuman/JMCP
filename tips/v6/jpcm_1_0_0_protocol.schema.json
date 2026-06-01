@@ -1,0 +1,2064 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jmcp.dev/schemas/jpcm/1.0.0/jpcm-envelope.schema.json",
+  "title": "JPCM-1.0.0 Control Envelope and Protocol Object Schema",
+  "description": "Versioned schema for the Joint Process Control Messaging protocol used by the Joint Master Control Plane. This schema validates the canonical envelope and embedded control objects for tasks, leases, tools, data, evidence, attention, voice, memory, self-improvement, and automated tool building.",
+  "type": "object",
+  "required": [
+    "jpcm_version",
+    "message_id",
+    "message_type",
+    "subject",
+    "issued_at",
+    "producer",
+    "trace",
+    "delivery",
+    "risk",
+    "schema",
+    "payload_hash",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jpcm_version": {
+      "const": "1.0.0"
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^(urn:jpcm:msg:)?[A-Za-z0-9._:-]{16,128}$",
+      "description": "Globally unique UUIDv7, ULID, or urn:jpcm:msg value."
+    },
+    "message_type": {
+      "$ref": "#/$defs/MessageType"
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^jpcm\\.[a-z0-9][a-z0-9_.-]{1,240}$"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "not_before": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "default": null
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "default": null
+    },
+    "producer": {
+      "$ref": "#/$defs/Principal"
+    },
+    "audience": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PrincipalRef"
+      },
+      "default": []
+    },
+    "tenant_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repo_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "trace": {
+      "$ref": "#/$defs/TraceContext"
+    },
+    "delivery": {
+      "$ref": "#/$defs/DeliverySemantics"
+    },
+    "risk": {
+      "$ref": "#/$defs/RiskContext"
+    },
+    "data_classification": {
+      "$ref": "#/$defs/DataClassification"
+    },
+    "policy_context": {
+      "$ref": "#/$defs/PolicyContext"
+    },
+    "lease_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "context_contract_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "$ref": "#/$defs/SchemaRef"
+    },
+    "payload_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-fA-F0-9]{64}$"
+    },
+    "payload": {
+      "$ref": "#/$defs/Payload"
+    },
+    "redaction": {
+      "$ref": "#/$defs/RedactionPolicy"
+    },
+    "signature": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Signature"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Vendor extensions. Extensions MUST NOT alter the meaning of required fields."
+    }
+  },
+  "$defs": {
+    "MessageType": {
+      "type": "string",
+      "enum": [
+        "service.manifest.published",
+        "service.heartbeat",
+        "service.degraded",
+        "service.retired",
+        "service.capability.changed",
+        "intent.submitted",
+        "user.message",
+        "voice.segment.created",
+        "voice.transcript.candidate",
+        "voice.intent.candidate",
+        "attention.candidate",
+        "attention.packet.created",
+        "attention.escalation.created",
+        "attention.receipt.recorded",
+        "approval.requested",
+        "approval.decision.recorded",
+        "work_order.created",
+        "work_order.updated",
+        "workflow.graph.created",
+        "workflow.graph.updated",
+        "workflow.graph.closed",
+        "task.created",
+        "task.commanded",
+        "task.state.changed",
+        "task.progress.reported",
+        "task.blocked",
+        "task.unblocked",
+        "task.cancel.requested",
+        "task.rollback.requested",
+        "task.completed",
+        "task.failed",
+        "task.quarantined",
+        "lease.requested",
+        "lease.issued",
+        "lease.denied",
+        "lease.renewed",
+        "lease.revoked",
+        "lease.expired",
+        "context.contract.granted",
+        "context.contract.revoked",
+        "tool.manifest.published",
+        "tool.audit.requested",
+        "tool.audit.result",
+        "tool.call.requested",
+        "tool.call.authorized",
+        "tool.call.denied",
+        "tool.call.result",
+        "tool.build.proposed",
+        "tool.build.plan.created",
+        "tool.build.result",
+        "tool.deprecated",
+        "tool.decommissioned",
+        "data.asset.registered",
+        "data.asset.updated",
+        "data.access.requested",
+        "data.access.granted",
+        "data.access.denied",
+        "data.observation.recorded",
+        "evidence.bundle.created",
+        "evidence.item.appended",
+        "evidence.verification.requested",
+        "evidence.verification.result",
+        "evidence.challenge.created",
+        "policy.decision.recorded",
+        "policy.violation.detected",
+        "fault.detected",
+        "incident.created",
+        "incident.updated",
+        "incident.resolved",
+        "memory.candidate.created",
+        "memory.proposal.created",
+        "memory.accepted",
+        "memory.rejected",
+        "memory.revoked",
+        "knowledge.compression.result",
+        "self_improvement.proposed",
+        "self_improvement.experiment.started",
+        "self_improvement.experiment.result",
+        "self_improvement.canary.started",
+        "self_improvement.deployed",
+        "self_improvement.rollback.requested",
+        "self_improvement.rolled_back",
+        "research.query.created",
+        "research.result.recorded",
+        "model.route.requested",
+        "model.eval.result",
+        "budget.event.recorded",
+        "cost.event.recorded",
+        "telemetry.emitted",
+        "conformance.result.recorded"
+      ]
+    },
+    "PrincipalRef": {
+      "type": "object",
+      "required": [
+        "principal_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "principal_id": {
+          "type": "string"
+        },
+        "service_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Principal": {
+      "type": "object",
+      "required": [
+        "principal_id",
+        "service_id",
+        "instance_id",
+        "trust_tier"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "principal_id": {
+          "type": "string"
+        },
+        "service_id": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string"
+        },
+        "service_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(sha256:[a-fA-F0-9]{64})?$"
+        },
+        "trust_tier": {
+          "type": "string",
+          "enum": [
+            "root-authority",
+            "core-service",
+            "trusted-adapter",
+            "quarantined-adapter",
+            "worker",
+            "external-agent",
+            "human-user",
+            "voice-surface",
+            "test-fixture"
+          ]
+        },
+        "auth_context": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "TraceContext": {
+      "type": "object",
+      "required": [
+        "trace_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correlation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "causation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "intent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "work_order_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflow_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attempt_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replay_epoch": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "DeliverySemantics": {
+      "type": "object",
+      "required": [
+        "class",
+        "idempotency_key"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "type": "string",
+          "enum": [
+            "D0-ephemeral",
+            "D1-at-most-once",
+            "D2-at-least-once",
+            "D3-effectively-once",
+            "D4-authority-serialized"
+          ]
+        },
+        "ordering_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dedupe_window_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 86400
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "ack_required": {
+          "type": "boolean",
+          "default": true
+        },
+        "dead_letter_subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RiskContext": {
+      "type": "object",
+      "required": [
+        "risk_tier",
+        "autonomy_tier",
+        "criticality",
+        "silence_risk"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "risk_tier": {
+          "type": "string",
+          "enum": [
+            "R0-readonly",
+            "R1-local-draft",
+            "R2-repo-draft",
+            "R3-cross-repo",
+            "R4-production-or-secret",
+            "R5-policy-or-memory",
+            "R6-self-modifying-authority"
+          ]
+        },
+        "autonomy_tier": {
+          "type": "string",
+          "enum": [
+            "A0-human-only",
+            "A1-suggest",
+            "A2-draft",
+            "A3-act-with-lease",
+            "A4-act-with-proof",
+            "A5-shadow-or-canary-only"
+          ]
+        },
+        "criticality": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "blast_radius": {
+          "type": "string",
+          "enum": [
+            "none",
+            "local",
+            "repo",
+            "cross-repo",
+            "user-data",
+            "production",
+            "organization",
+            "authority-kernel"
+          ]
+        },
+        "reversibility": {
+          "type": "string",
+          "enum": [
+            "trivial",
+            "easy",
+            "moderate",
+            "hard",
+            "irreversible",
+            "unknown"
+          ]
+        },
+        "silence_risk": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requires_user_approval": {
+          "type": "boolean",
+          "default": false
+        },
+        "requires_quorum": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "DataClassification": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "secret",
+        "regulated",
+        "credential",
+        "unknown"
+      ]
+    },
+    "PolicyContext": {
+      "type": "object",
+      "required": [
+        "policy_epoch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policy_epoch": {
+          "type": "string"
+        },
+        "policy_bundle_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ruleset_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "simulation_required": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "SchemaRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "content_type": {
+          "type": "string",
+          "default": "application/schema+json"
+        }
+      }
+    },
+    "RedactionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "classification_floor": {
+          "$ref": "#/$defs/DataClassification"
+        },
+        "allowed_views": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "retention_class": {
+          "type": "string",
+          "enum": [
+            "ephemeral",
+            "short",
+            "standard",
+            "long",
+            "legal-hold",
+            "do-not-store"
+          ],
+          "default": "standard"
+        },
+        "secret_scan_required": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "Signature": {
+      "type": "object",
+      "required": [
+        "scheme",
+        "key_id",
+        "signature"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "JWS",
+            "DSSE",
+            "SigstoreBundle",
+            "DetachedEd25519",
+            "DetachedECDSA"
+          ]
+        },
+        "alg": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "signed_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "all"
+          ]
+        },
+        "certificate_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TaskKind": {
+      "type": "string",
+      "enum": [
+        "investigate",
+        "bug_fix",
+        "feature",
+        "refactor",
+        "security_review",
+        "incident_response",
+        "repo_creation",
+        "research",
+        "knowledge_compression",
+        "memory_promotion",
+        "tool_build",
+        "tool_audit",
+        "self_improvement",
+        "data_ingestion",
+        "telemetry_analysis",
+        "test_generation",
+        "dependency_update",
+        "performance_optimization",
+        "cost_reduction",
+        "user_followup",
+        "policy_change",
+        "migration",
+        "release",
+        "rollback",
+        "documentation",
+        "prototype",
+        "sandbox_experiment",
+        "deprecation",
+        "scheduled_maintenance",
+        "audit",
+        "red_team",
+        "model_eval",
+        "unknown"
+      ]
+    },
+    "TaskState": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "triaged",
+        "planned",
+        "leased",
+        "dispatched",
+        "running",
+        "waiting_for_evidence",
+        "waiting_for_user",
+        "blocked",
+        "paused",
+        "reviewing",
+        "verifying",
+        "ready_to_promote",
+        "promoting",
+        "completed",
+        "failed",
+        "canceled",
+        "rolled_back",
+        "quarantined"
+      ]
+    },
+    "Budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_wall_clock_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_cpu_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_io_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_parallelism": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "WorkOrder": {
+      "type": "object",
+      "required": [
+        "work_order_id",
+        "title",
+        "origin",
+        "objective",
+        "risk_tier",
+        "status",
+        "tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "work_order_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "human-text",
+            "human-voice",
+            "system-detected",
+            "scheduled",
+            "incident",
+            "self-improvement",
+            "tool-radar",
+            "external-webhook"
+          ]
+        },
+        "objective": {
+          "type": "string"
+        },
+        "non_goals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "risk_tier": {
+          "$ref": "#/$defs/RiskContext"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "active",
+            "waiting",
+            "blocked",
+            "completed",
+            "failed",
+            "canceled"
+          ]
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Task"
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "attention_policy": {
+          "$ref": "#/$defs/AttentionPolicy"
+        }
+      }
+    },
+    "Task": {
+      "type": "object",
+      "required": [
+        "task_id",
+        "kind",
+        "state",
+        "title",
+        "owner",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TaskKind"
+        },
+        "state": {
+          "$ref": "#/$defs/TaskState"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "locks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "lease_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "evidence_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "rollback_plan_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0
+        }
+      }
+    },
+    "WorkflowGraph": {
+      "type": "object",
+      "required": [
+        "workflow_id",
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "workflow_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Task"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "to",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "depends_on",
+                  "blocks",
+                  "verifies",
+                  "rolls_back",
+                  "supersedes",
+                  "duplicates",
+                  "fanout",
+                  "fanin"
+                ]
+              }
+            }
+          }
+        },
+        "wip_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8
+        },
+        "scheduler": {
+          "type": "string",
+          "enum": [
+            "priority-fair",
+            "deadline-first",
+            "risk-first",
+            "cost-aware",
+            "manual"
+          ],
+          "default": "priority-fair"
+        }
+      }
+    },
+    "CapabilityLease": {
+      "type": "object",
+      "required": [
+        "lease_id",
+        "principal",
+        "capabilities",
+        "scope",
+        "issued_at",
+        "expires_at",
+        "policy_epoch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lease_id": {
+          "type": "string"
+        },
+        "principal": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "max_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "remaining_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "policy_epoch": {
+          "type": "string"
+        },
+        "revocation_subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ServiceManifest": {
+      "type": "object",
+      "required": [
+        "service_id",
+        "name",
+        "version",
+        "service_kind",
+        "capabilities",
+        "interfaces",
+        "trust_requirements"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "service_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "service_kind": {
+          "type": "string",
+          "enum": [
+            "jmcp-core",
+            "adapter",
+            "agent",
+            "tool",
+            "datastore",
+            "model-router",
+            "voice-surface",
+            "frontend",
+            "ci-runner",
+            "evidence-verifier",
+            "policy-engine",
+            "sandbox",
+            "scheduler"
+          ]
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "binding",
+              "endpoint"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "binding": {
+                "type": "string",
+                "enum": [
+                  "nats",
+                  "http-json",
+                  "grpc",
+                  "websocket",
+                  "stdio-adapter",
+                  "a2a-bridge",
+                  "mcp-bridge"
+                ]
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "auth": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "data_touched": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "side_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "trust_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sandbox_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sbom_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slsa_level": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conformance": {
+          "$ref": "#/$defs/ConformanceClaim"
+        }
+      }
+    },
+    "ToolManifest": {
+      "type": "object",
+      "required": [
+        "tool_id",
+        "name",
+        "version",
+        "description",
+        "inputs",
+        "outputs",
+        "side_effect_class",
+        "risk_tier"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tool_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "side_effect_class": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read",
+            "local-write",
+            "repo-write",
+            "network",
+            "secret-access",
+            "production-write",
+            "authority-write"
+          ]
+        },
+        "risk_tier": {
+          "type": "string"
+        },
+        "cost_model": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "latency_slo_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "required_leases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "evidence_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "deprecation": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    "DataAsset": {
+      "type": "object",
+      "required": [
+        "asset_id",
+        "name",
+        "classification",
+        "owner",
+        "location",
+        "freshness"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "classification": {
+          "$ref": "#/$defs/DataClassification"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "schema_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "freshness": {
+          "type": "string",
+          "enum": [
+            "live",
+            "hourly",
+            "daily",
+            "weekly",
+            "stale",
+            "unknown"
+          ]
+        },
+        "allowed_uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "retention": {
+          "type": "string",
+          "default": "standard"
+        },
+        "lineage_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "EvidenceBundle": {
+      "type": "object",
+      "required": [
+        "bundle_id",
+        "claim",
+        "subject_refs",
+        "items",
+        "quality",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bundle_id": {
+          "type": "string"
+        },
+        "claim": {
+          "type": "string"
+        },
+        "subject_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "evidence_id",
+              "kind",
+              "uri",
+              "hash"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "evidence_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "test-log",
+                  "ci-run",
+                  "trace",
+                  "screenshot",
+                  "diff",
+                  "coverage",
+                  "static-analysis",
+                  "dynamic-analysis",
+                  "benchmark",
+                  "human-review",
+                  "attestation",
+                  "provenance",
+                  "replay",
+                  "simulation",
+                  "red-team",
+                  "voice-transcript"
+                ]
+              },
+              "uri": {
+                "type": "string"
+              },
+              "hash": {
+                "type": "string"
+              },
+              "producer": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "quality": {
+          "type": "string",
+          "enum": [
+            "E0-claim-only",
+            "E1-single-source",
+            "E2-reproducible",
+            "E3-independent",
+            "E4-adversarial",
+            "E5-production-correlated"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "supports",
+            "contradicts",
+            "inconclusive",
+            "spoof-suspected"
+          ]
+        },
+        "replay_command_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "AttentionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_mode": {
+          "type": "string",
+          "enum": [
+            "silent",
+            "digest",
+            "ask-on-risk",
+            "always-ask"
+          ],
+          "default": "ask-on-risk"
+        },
+        "escalate_when": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "digest_interval_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "max_interruptions_per_day": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "AttentionPacket": {
+      "type": "object",
+      "required": [
+        "attention_id",
+        "reason",
+        "decision_needed",
+        "options",
+        "recommended_option",
+        "deadline"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attention_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "decision_needed": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "option_id",
+              "label",
+              "consequence"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "option_id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "consequence": {
+                "type": "string"
+              },
+              "risk_delta": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "cost_delta": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "recommended_option": {
+          "type": "string"
+        },
+        "deadline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "minimum_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "drilldown_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "voice_confirmation_required": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "VoiceSegment": {
+      "type": "object",
+      "required": [
+        "segment_id",
+        "source",
+        "started_at",
+        "ended_at",
+        "transcript",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "desktop-mic",
+            "mobile-mic",
+            "phone",
+            "browser",
+            "uploaded-audio",
+            "other"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "speaker_verified": {
+          "type": "boolean",
+          "default": false
+        },
+        "wake_word_detected": {
+          "type": "boolean",
+          "default": false
+        },
+        "ambient_risk": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requires_readback": {
+          "type": "boolean",
+          "default": true
+        },
+        "audio_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "MemoryProposal": {
+      "type": "object",
+      "required": [
+        "memory_id",
+        "scope",
+        "claim",
+        "evidence_refs",
+        "confidence",
+        "ttl"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "task",
+            "repo",
+            "project",
+            "user",
+            "global",
+            "temporary"
+          ]
+        },
+        "claim": {
+          "type": "string"
+        },
+        "counterexamples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ttl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rollback_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "promotion_gate": {
+          "type": "string",
+          "enum": [
+            "automatic-low-risk",
+            "human-review",
+            "quorum",
+            "red-team-required"
+          ]
+        }
+      }
+    },
+    "ToolBuildProposal": {
+      "type": "object",
+      "required": [
+        "proposal_id",
+        "problem",
+        "candidate_tool",
+        "expected_value",
+        "risk_tier",
+        "evaluation_plan"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "candidate_tool": {
+          "$ref": "#/$defs/ToolManifest"
+        },
+        "expected_value": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "risk_tier": {
+          "$ref": "#/$defs/RiskContext"
+        },
+        "build_plan_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evaluation_plan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maintenance_owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sunset_condition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SelfImprovementProposal": {
+      "type": "object",
+      "required": [
+        "proposal_id",
+        "target",
+        "hypothesis",
+        "change_class",
+        "evaluation_plan",
+        "rollback_plan",
+        "approval_gate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "policy",
+            "scheduler",
+            "router",
+            "memory-index",
+            "tool",
+            "schema",
+            "ui",
+            "observability",
+            "sandbox",
+            "authority-kernel"
+          ]
+        },
+        "hypothesis": {
+          "type": "string"
+        },
+        "change_class": {
+          "type": "string",
+          "enum": [
+            "measurement-only",
+            "shadow",
+            "canary",
+            "reversible-production",
+            "authority-impacting"
+          ]
+        },
+        "evaluation_plan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "rollback_plan": {
+          "type": "string"
+        },
+        "approval_gate": {
+          "type": "string",
+          "enum": [
+            "none",
+            "human",
+            "quorum",
+            "forbidden"
+          ]
+        },
+        "success_metrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "harm_metrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "PolicyDecision": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "subject",
+        "decision",
+        "reason",
+        "policy_epoch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny",
+            "quarantine",
+            "require-human",
+            "require-more-evidence",
+            "require-quorum"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "policy_epoch": {
+          "type": "string"
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "ConformanceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "C0-observer",
+            "C1-reporter",
+            "C2-leased-actor",
+            "C3-evidence-actor",
+            "C4-authority-participant",
+            "C5-self-improving-participant"
+          ],
+          "default": "C0-observer"
+        },
+        "suite_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_result_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "ErrorObject": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "schema.invalid",
+            "signature.invalid",
+            "lease.missing",
+            "lease.expired",
+            "policy.denied",
+            "idempotency.conflict",
+            "ordering.conflict",
+            "payload.hash_mismatch",
+            "evidence.insufficient",
+            "risk.escalation_required",
+            "budget.exceeded",
+            "sandbox.violation",
+            "tool.quarantined",
+            "voice.untrusted",
+            "unknown"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean",
+          "default": false
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Payload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ServiceManifest"
+        },
+        {
+          "$ref": "#/$defs/WorkOrder"
+        },
+        {
+          "$ref": "#/$defs/WorkflowGraph"
+        },
+        {
+          "$ref": "#/$defs/Task"
+        },
+        {
+          "$ref": "#/$defs/CapabilityLease"
+        },
+        {
+          "$ref": "#/$defs/ToolManifest"
+        },
+        {
+          "$ref": "#/$defs/ToolBuildProposal"
+        },
+        {
+          "$ref": "#/$defs/DataAsset"
+        },
+        {
+          "$ref": "#/$defs/EvidenceBundle"
+        },
+        {
+          "$ref": "#/$defs/AttentionPacket"
+        },
+        {
+          "$ref": "#/$defs/VoiceSegment"
+        },
+        {
+          "$ref": "#/$defs/MemoryProposal"
+        },
+        {
+          "$ref": "#/$defs/SelfImprovementProposal"
+        },
+        {
+          "$ref": "#/$defs/PolicyDecision"
+        },
+        {
+          "$ref": "#/$defs/ConformanceClaim"
+        },
+        {
+          "$ref": "#/$defs/ErrorObject"
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Forward-compatible payload for extension events. Must still be governed by schema.id and schema.version."
+        }
+      ]
+    }
+  },
+  "x-jpcm-normative-rules": [
+    "All side-effecting messages MUST include at least one valid CapabilityLease reference and MUST be rechecked by the adapter immediately before effect execution.",
+    "R4, R5, and R6 messages MUST be D4-authority-serialized unless a policy decision explicitly permits lower delivery class.",
+    "Voice-originated intents MUST pass through voice.segment.created and voice.intent.candidate before becoming work_order.created, and R2+ voice commands require readback or equivalent explicit confirmation.",
+    "Self-improvement targeting policy, schema, scheduler, router, sandbox, or authority-kernel MUST require quorum and canary or shadow evaluation before deployment.",
+    "No memory object may be accepted without evidence_refs and rollback_ref unless scope is temporary.",
+    "No tool may be used by JMCP until a ToolManifest, audit result, sandbox profile, and conformance claim are recorded.",
+    "Payload hashes are computed over canonical JSON using RFC 8785 JCS unless an approved schema profile specifies otherwise.",
+    "Extensions MUST NOT override or reinterpret required fields. Services that require semantic changes MUST publish a new schema version."
+  ]
+}

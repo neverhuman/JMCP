@@ -1,0 +1,13 @@
+[package]
+name = "jmcp-tui"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+ratatui.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

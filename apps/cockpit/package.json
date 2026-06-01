@@ -1,0 +1,31 @@
+{
+  "name": "@jmcp/cockpit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "lint": "tsc --noEmit -p tsconfig.json --pretty false && tsc --noEmit -p tsconfig.node.json --pretty false",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^4.1.8"
+  }
+}

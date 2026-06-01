@@ -1,0 +1,11 @@
+[package]
+name = "jmcp-approval-telegram"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+jmcp-domain = { path = "../jmcp-domain" }
+thiserror.workspace = true
+uuid.workspace = true
