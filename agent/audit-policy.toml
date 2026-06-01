@@ -1,52 +1,100 @@
-version = 1
+advisory_on = [
+    "medium",
+    "low",
+]
+fail_on = [
+    "critical",
+    "high",
+]
+minimum_score = 85
 system = "JMCP"
-
-[retention]
-default = "local-project-retained"
-rotation = "operator-managed"
-export_format = "jsonl"
+version = 1
 
 [classification]
-secret_fields = [
-  "token",
-  "password",
-  "secret",
-  "api_key",
-  "authorization",
-  "cookie"
-]
 public_fields = [
-  "event_id",
-  "correlation_id",
-  "actor",
-  "component",
-  "operation",
-  "decision",
-  "timestamp",
-  "diagnostic_class"
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "decision",
+    "timestamp",
+    "diagnostic_class",
 ]
-
-[rules]
-redact_secret_fields = true
-record_approval_decisions = true
-record_policy_denials = true
-record_replay_start_stop = true
-record_adapter_boundary_crossings = true
-disallow_raw_payload_logging_by_default = true
+secret_fields = [
+    "token",
+    "password",
+    "secret",
+    "api_key",
+    "authorization",
+    "cookie",
+]
 
 [[event_class]]
 name = "approval.requested"
-required_fields = ["event_id", "correlation_id", "actor", "component", "operation", "timestamp"]
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
 
 [[event_class]]
 name = "approval.decided"
-required_fields = ["event_id", "correlation_id", "actor", "decision", "timestamp"]
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "decision",
+    "timestamp",
+]
 
 [[event_class]]
 name = "adapter.invoked"
-required_fields = ["event_id", "correlation_id", "component", "operation", "timestamp"]
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "component",
+    "operation",
+    "timestamp",
+]
 
 [[event_class]]
 name = "replay.executed"
-required_fields = ["event_id", "correlation_id", "component", "operation", "timestamp"]
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "component",
+    "operation",
+    "timestamp",
+]
 
+[history]
+dedupe = "consecutive-equivalent"
+max_bytes = 1048576
+max_rows = 500
+mirror_env = "JANKURAI_HISTORY_MIRROR"
+mirror_max_rows = 5000
+mirror_required = false
+
+[retention]
+default = "local-project-retained"
+export_format = "jsonl"
+rotation = "operator-managed"
+
+[rules]
+disallow_raw_payload_logging_by_default = true
+record_adapter_boundary_crossings = true
+record_approval_decisions = true
+record_policy_denials = true
+record_replay_start_stop = true
+redact_secret_fields = true
+
+[scan]
+excluded_paths = ["tips/"]
+
+[smart_scan]
+full_scan_interval_secs = 3600
+roulette_rate = 0.1

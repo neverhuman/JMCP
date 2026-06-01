@@ -1,7 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use jcp_core::{Envelope, LocalSigner, Subject};
+use jmcp_approval_telegram::{TelegramBotClient, TelegramConfig};
+use serde_json::json;
 use serde_json::Value;
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 use std::process::Command as StdCommand;
 
 const DEFAULT_API_URL: &str = "http://127.0.0.1:18877";
@@ -25,12 +29,33 @@ enum Command {
         #[command(subcommand)]
         command: DoctorCommand,
     },
+    Telegram {
+        #[command(subcommand)]
+        command: TelegramCommand,
+    },
     Submit {
         subject: String,
         kind: String,
         #[arg(long, default_value = "{}")]
         payload: String,
     },
+    Approve {
+        token: String,
+        #[arg(long, default_value = "local")]
+        approver: String,
+    },
+    Deny {
+        token: String,
+        #[arg(long, default_value = "local")]
+        approver: String,
+    },
+    WorkOrders,
+    Evidence,
+    Replay {
+        #[arg(long)]
+        now: bool,
+    },
+    Ecosystem,
     List,
 }
 
@@ -39,22 +64,42 @@ enum DoctorCommand {
     Env,
 }
 
+#[derive(Debug, Subcommand)]
+enum TelegramCommand {
+    Doctor {
+        #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
+        env_file: PathBuf,
+        #[arg(
+            long,
+            env = "JMCP_TELEGRAM_OFFSET_FILE",
+            default_value = "jmcp.telegram.offset"
+        )]
+        offset_file: PathBuf,
+    },
+    DiscoverIds {
+        #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
+        env_file: PathBuf,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
     let client = reqwest::Client::new();
     match args.command {
         Command::Health => {
-            let value: Value = client
-                .get(format!("{}/health", args.server))
-                .send()
-                .await?
-                .json()
-                .await?;
+            let value = get_json(&client, &args.server, "/health").await?;
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
         Command::Doctor { command } => match command {
             DoctorCommand::Env => doctor_env(&args.server)?,
+        },
+        Command::Telegram { command } => match command {
+            TelegramCommand::Doctor {
+                env_file,
+                offset_file,
+            } => telegram_doctor(env_file, offset_file).await?,
+            TelegramCommand::DiscoverIds { env_file } => telegram_discover_ids(env_file).await?,
         },
         Command::Submit {
             subject,
@@ -64,23 +109,176 @@ async fn main() -> Result<()> {
             let payload: Value = serde_json::from_str(&payload)?;
             let signer = LocalSigner::load_or_create_default()?;
             let envelope = signer.sign(Envelope::new(subject.parse::<Subject>()?, kind, payload));
-            let value: Value = client
-                .post(format!("{}/work-orders", args.server))
-                .json(&envelope)
-                .send()
-                .await?
-                .json()
-                .await?;
+            let value = post_json(&client, &args.server, "/work-orders", &envelope).await?;
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
-        Command::List => {
-            let value: Value = client
-                .get(format!("{}/work-orders", args.server))
-                .send()
-                .await?
-                .json()
-                .await?;
+        Command::Approve { token, approver } => {
+            let value = post_json(
+                &client,
+                &args.server,
+                "/approvals/approve",
+                &json!({ "token": token, "approver": approver }),
+            )
+            .await?;
             println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        Command::Deny { token, approver } => {
+            let value = post_json(
+                &client,
+                &args.server,
+                "/approvals/deny",
+                &json!({ "token": token, "approver": approver }),
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        Command::WorkOrders | Command::List => {
+            let value = get_json(&client, &args.server, "/work-orders").await?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        Command::Evidence => {
+            let value = get_json(&client, &args.server, "/evidence").await?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        Command::Replay { now } => {
+            let value = if now {
+                post_json(&client, &args.server, "/replay", &json!({})).await?
+            } else {
+                get_json(&client, &args.server, "/replay").await?
+            };
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        Command::Ecosystem => {
+            let value = get_json(&client, &args.server, "/ecosystem").await?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+    }
+    Ok(())
+}
+
+async fn get_json(client: &reqwest::Client, server: &str, path: &str) -> Result<Value> {
+    let response = client.get(format!("{server}{path}")).send().await?;
+    read_json_response(path, response).await
+}
+
+async fn post_json<T: serde::Serialize + ?Sized>(
+    client: &reqwest::Client,
+    server: &str,
+    path: &str,
+    body: &T,
+) -> Result<Value> {
+    let response = client
+        .post(format!("{server}{path}"))
+        .json(body)
+        .send()
+        .await?;
+    read_json_response(path, response).await
+}
+
+async fn read_json_response(path: &str, response: reqwest::Response) -> Result<Value> {
+    let status = response.status();
+    let text = response.text().await?;
+    if !status.is_success() {
+        anyhow::bail!("JMCP API {path} returned {status}: {text}");
+    }
+    Ok(serde_json::from_str(&text)?)
+}
+
+async fn telegram_doctor(env_file: PathBuf, offset_file: PathBuf) -> Result<()> {
+    let config = TelegramConfig::from_env_file_for_setup(&env_file)?;
+    let mut failed = false;
+
+    println!("JMCP_TELEGRAM_ENV={}", env_file.display());
+    println!("telegram_token=loaded (redacted)");
+    println!("telegram_api_base={}", config.api_base);
+    println!(
+        "telegram_allowlist=user_ids:{} chat_ids:{}",
+        config.allowed_user_ids.len(),
+        config.allowed_chat_ids.len()
+    );
+    println!("telegram_config={config:?}");
+
+    if !config.has_allowlist() {
+        eprintln!("error: telegram allowlist missing");
+        failed = true;
+    }
+
+    let client = TelegramBotClient::new(config);
+    match client.get_me().await {
+        Ok(me) => {
+            println!(
+                "telegram_getMe=ok id:{} username:{}",
+                me.id,
+                me.username.unwrap_or_else(|| "(none)".to_owned())
+            );
+        }
+        Err(err) => {
+            eprintln!("error: telegram getMe failed: {err}");
+            failed = true;
+        }
+    }
+
+    match std::fs::read_to_string(&offset_file) {
+        Ok(contents) => match contents.trim().parse::<i64>() {
+            Ok(offset) => println!(
+                "telegram_offset_file={} offset={offset}",
+                offset_file.display()
+            ),
+            Err(_) => {
+                eprintln!(
+                    "error: telegram offset file is not a valid integer: {}",
+                    offset_file.display()
+                );
+                failed = true;
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!(
+                "telegram_offset_file={} status=absent",
+                offset_file.display()
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "error: telegram offset file could not be read: {}: {err}",
+                offset_file.display()
+            );
+            failed = true;
+        }
+    }
+
+    if failed {
+        anyhow::bail!("Telegram setup is not ready");
+    }
+    println!("Telegram setup is ready");
+    Ok(())
+}
+
+async fn telegram_discover_ids(env_file: PathBuf) -> Result<()> {
+    let config = TelegramConfig::from_env_file_for_setup(&env_file)?;
+    let client = TelegramBotClient::new(config);
+    let updates = client.get_updates(None, 0).await?;
+    let mut candidates = BTreeSet::new();
+    for update in updates {
+        if let Some(message) = update.message {
+            if let Some(user) = message.from {
+                candidates.insert(format!(
+                    "user_id={} chat_id={} chat_type={} username={} first_name={}",
+                    user.id,
+                    message.chat.id,
+                    message.chat.kind,
+                    user.username.unwrap_or_else(|| "(none)".to_owned()),
+                    user.first_name
+                ));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        println!("No Telegram updates found. Send the bot a message, then rerun discover-ids.");
+    } else {
+        for candidate in candidates {
+            println!("{candidate}");
         }
     }
     Ok(())

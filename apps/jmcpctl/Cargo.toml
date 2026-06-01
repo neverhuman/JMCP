@@ -8,6 +8,8 @@ version.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 jcp-core = { path = "../../crates/jcp-core" }
+jmcp-approval-telegram = { path = "../../crates/jmcp-approval-telegram" }
 reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

@@ -1,0 +1,303 @@
+agent_request_hash = "<!-- jankurai agent request v1 sha256:REPLACE_WITH_HASH -->"
+agent_request_version = "v1"
+auditor_version = "1.6.10"
+ide = "all"
+install_source = "github"
+installed_at = 1780345222
+jankurai_version = "1.6.10"
+level = "agents"
+mode = "advisory"
+paper_edition = "2026.05-ed8"
+profile = "rust-ts-postgres"
+resolved_source = "github"
+schema_contract_version = "1.9.0"
+schema_version = "1.0.0"
+source_url = "https://github.com/jeppsontaylor/Jankurai.git"
+standard_version = "0.9.0"
+target_stack_id = "rust-ts-vite-react-postgres-bounded-python"
+update_channel = "stable"
+
+[[templates]]
+hash = "74cb5af0a725c4cdd827bcea1ecbe2747d8f5dca93d5c73a6bca193a97d66db7"
+merge_policy = "merge-marker"
+path = "AGENTS.md"
+
+[[templates]]
+hash = "ecd6c59d9d6b6a9568c7d46a402c3ea6d3b22d80196347740a66cbe9157fbba9"
+merge_policy = "keep-existing"
+path = "CLAUDE.md"
+
+[[templates]]
+hash = "ecd6c59d9d6b6a9568c7d46a402c3ea6d3b22d80196347740a66cbe9157fbba9"
+merge_policy = "keep-existing"
+path = "GEMINI.md"
+
+[[templates]]
+hash = "5869e4b28e0c90a3248f978345992d708fc68e03845068724d0f6a1ae8c6640e"
+merge_policy = "merge-lines"
+path = "Justfile"
+
+[[templates]]
+hash = "21c7d2f66dcdcccaaf369c1c6bcf72401f26e41d0ba25ef17f403ea093e10c88"
+merge_policy = "merge-lines"
+path = ".gitignore"
+
+[[templates]]
+hash = "a7e20757eec66bdd43ec6f3faa0eebf444dc66bfc91727d6f8ca0fde8356f3d7"
+merge_policy = "keep-existing"
+path = "README-jankurai-scaffold.md"
+
+[[templates]]
+hash = "077acf1090a427846b2d0a9d33d7ef19783429a6501199bee8d8ce61786a2693"
+merge_policy = "merge-marker"
+path = "apps/web/AGENTS.md"
+
+[[templates]]
+hash = "bc79470ae7fb2ef2a13137f2e45f171aef41288efccb07ca5a0be5b1d90b2aa4"
+merge_policy = "merge-marker"
+path = "apps/api/AGENTS.md"
+
+[[templates]]
+hash = "ecd6c59d9d6b6a9568c7d46a402c3ea6d3b22d80196347740a66cbe9157fbba9"
+merge_policy = "keep-existing"
+path = ".agents/agents.md"
+
+[[templates]]
+hash = "064338f153f4af48a37b5a4cf2102fa7721e63935349a633d08369f09f30e5ca"
+merge_policy = "keep-existing"
+path = ".agents/skills/jankurai/SKILL.md"
+
+[[templates]]
+hash = "906d028646e66ca7c924a9e5e2c9ecc99459b0df1c3c4987d321dbebeecd799a"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-audit.md"
+
+[[templates]]
+hash = "53e2021379f3875b7d1346aa33afb1d770a17f9311a6f62f869154f82c503550"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-context-pack.md"
+
+[[templates]]
+hash = "cd49e70e846831bc083863341c41ab5c0f8a45a44674b89df2dfdb6c81068f28"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-kickoff.md"
+
+[[templates]]
+hash = "d90e0f1db0df52c4fcde5b5d00ab794becafccb62b98c0c4407287059a7d7422"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-prove.md"
+
+[[templates]]
+hash = "070319debb8d743364e8f45f88afbb6f0d9844b483a6e16a1cbb7aa4903643ac"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-witness.md"
+
+[[templates]]
+hash = "36df3b24122cace138763afc79ac12bd86eee12d2ae9572c84d6f860b55f55f6"
+merge_policy = "keep-existing"
+path = ".agents/workflows/jankurai-repair-plan.md"
+
+[[templates]]
+hash = "064338f153f4af48a37b5a4cf2102fa7721e63935349a633d08369f09f30e5ca"
+merge_policy = "keep-existing"
+path = ".claude/skills/jankurai/SKILL.md"
+
+[[templates]]
+hash = "3254b203803ce48553019eaa07d1acf1fd2feaa0be2b76e911131c7dd2e113df"
+merge_policy = "keep-existing"
+path = ".cursor/rules/jankurai.mdc"
+
+[[templates]]
+hash = "ecd6c59d9d6b6a9568c7d46a402c3ea6d3b22d80196347740a66cbe9157fbba9"
+merge_policy = "keep-existing"
+path = ".github/copilot-instructions.md"
+
+[[templates]]
+hash = "ecd6c59d9d6b6a9568c7d46a402c3ea6d3b22d80196347740a66cbe9157fbba9"
+merge_policy = "keep-existing"
+path = ".github/instructions/jankurai.instructions.md"
+
+[[templates]]
+hash = "7b40b4f3f0c4a19d0564974909c0fab1fc52eb09b9081238354170b966e53770"
+merge_policy = "keep-existing"
+path = ".github/instructions/jankurai-rust.instructions.md"
+
+[[templates]]
+hash = "a141f4a4d4da45f064a73d8785653e6def17c6c18327961d3c81e63d57ae2e7f"
+merge_policy = "keep-existing"
+path = ".github/instructions/jankurai-web.instructions.md"
+
+[[templates]]
+hash = "7270ac782bb5f6c20b9b68dd4af395ff83826f6d15cd2ca41a78615eb19ae9f4"
+merge_policy = "keep-existing"
+path = ".github/workflows/jankurai.yml"
+
+[[templates]]
+hash = "e3ee9a36534bbb546b09c667bdf5c01342ecb834ff02fc80ccfbde4779b05366"
+merge_policy = "merge-marker"
+path = "agent/JANKURAI_STANDARD.md"
+
+[[templates]]
+hash = "93b49ac0ba1aa78be3f9054b8f3c2e8c12e4a9ce4fd495fa425ae92f1b1a30d9"
+merge_policy = "merge-toml"
+path = "agent/audit-policy.toml"
+
+[[templates]]
+hash = "441612192807b4437d9dd11275108b76f007606932c6a9a66974759b958db6d4"
+merge_policy = "merge-toml"
+path = "agent/boundaries.toml"
+
+[[templates]]
+hash = "063663d9a0adf4a35e8fc949b62b33bb7dd3dffd643f2a17611ac6789c7299a0"
+merge_policy = "merge-toml"
+path = "agent/security-policy.toml"
+
+[[templates]]
+hash = "eccf6976b5bf089d6829cfd2412b3eb6702b2ccc6cf711ca3047d5cf537aa8c4"
+merge_policy = "merge-toml"
+path = "agent/tool-adoption.toml"
+
+[[templates]]
+hash = "060d1e5ffd7297f4237a74686c043162be2da3389193376c0d47592f182c2e3f"
+merge_policy = "merge-toml"
+path = "agent/generated-zones.toml"
+
+[[templates]]
+hash = "01ce0059872f522c6136e9f58d70c53b5b70fac48aa1e5408d72d58fedc8e0bd"
+merge_policy = "merge-json"
+path = "agent/owner-map.json"
+
+[[templates]]
+hash = "93f0fb25b35cda8ac7f89b97d578749c3dcca83d92605ae9abfea1c4f6b15293"
+merge_policy = "merge-toml"
+path = "agent/proof-lanes.toml"
+
+[[templates]]
+hash = "1df12b1fefb726cff58d687107a7b1834bd51688fa49ee1890b93dac5fe3240c"
+merge_policy = "merge-toml"
+path = "agent/standard-version.toml"
+
+[[templates]]
+hash = "492c45dcb09e99ccea543ad94faea70c7cf0e27d86f428705ce2eead485940b4"
+merge_policy = "merge-json"
+path = "agent/test-map.json"
+
+[[templates]]
+hash = "3ed34d3c72f43c7fd1c0aae658c0a2cffbb9d6646ec3bdd3280d6452b0ad4e8b"
+merge_policy = "merge-toml"
+path = "agent/ux-qa.toml"
+
+[[templates]]
+hash = "0ecbf45ed53e78dbc5c7fa1d3609c617c8c4d7a49cb15d1b9780b51749050d5e"
+merge_policy = "merge-marker"
+path = "contracts/AGENTS.md"
+
+[[templates]]
+hash = "5a6c2ea2f6e7b9aec1fdfe23cf914d2aa02b084fb941c481c65edf27c4136c29"
+merge_policy = "keep-existing"
+path = "contracts/README.md"
+
+[[templates]]
+hash = "aab1277eaafc1ad8482c6c443ca40e75c6b984e34808aa533e24b2ddb991faf7"
+merge_policy = "merge-marker"
+path = "crates/adapters/AGENTS.md"
+
+[[templates]]
+hash = "fa719188aff049a70c82cf367138c1cb7b809dad52c939a2cb3844fb3eb1fe7b"
+merge_policy = "merge-marker"
+path = "crates/application/AGENTS.md"
+
+[[templates]]
+hash = "0f3c811584edf41e68e1dd87868980aacf5bdbabe3fa9d94e26cb8eb87a640bd"
+merge_policy = "merge-marker"
+path = "crates/domain/AGENTS.md"
+
+[[templates]]
+hash = "51766cb798bcf49350f61f772ef0b6232d63a778711e1cd28ca7406ba4713d31"
+merge_policy = "merge-marker"
+path = "crates/workers/AGENTS.md"
+
+[[templates]]
+hash = "de89a4537357a7bb729ae7b14520236875192ab7d927ac7efd0d7e183e50c84c"
+merge_policy = "merge-marker"
+path = "db/AGENTS.md"
+
+[[templates]]
+hash = "008a84a6d77be79d597146ff39177fe61c2d01576f4a3730e5c641bc498f87f3"
+merge_policy = "keep-existing"
+path = "db/constraints/README.md"
+
+[[templates]]
+hash = "53dd2d2f7adcd4614d16ee0b906fa245886d8278df43ab7d6c852fef9a401dce"
+merge_policy = "keep-existing"
+path = "db/migrations/README.md"
+
+[[templates]]
+hash = "c2e9fa28f750e21c5aeaa0daebd51a77bdaa2713e26df278f2d11ff694411461"
+merge_policy = "keep-existing"
+path = "db/README.md"
+
+[[templates]]
+hash = "23d364c35d3d772baa1f03090c2e2625ecedcb77bf29f109b55252038e3a6238"
+merge_policy = "keep-existing"
+path = "docs/agent-native-standard.md"
+
+[[templates]]
+hash = "78c2185615fbceb553e5ba2afe4b60d71f6b4560f03117e062f4d6204dbc9768"
+merge_policy = "keep-existing"
+path = "docs/architecture/README.md"
+
+[[templates]]
+hash = "ec62afa62cdc299c2cdd46a6e2cb42fb009aff1537419130da2a5619864bdd99"
+merge_policy = "keep-existing"
+path = "docs/decisions/README.md"
+
+[[templates]]
+hash = "58a5c399cfa9dab96d6195f73033a25bf96eacde5c12df352ae96c557381f991"
+merge_policy = "keep-existing"
+path = "docs/exceptions/README.md"
+
+[[templates]]
+hash = "25784409c7f57207726dd7bbfad36620783a86e176c3772d150cd74217745ec0"
+merge_policy = "keep-existing"
+path = "docs/ide-integrations.md"
+
+[[templates]]
+hash = "2ee2233b1d837ee90d6db942e45876ee1bb61688934922b3c81b19f55858edfb"
+merge_policy = "keep-existing"
+path = "docs/install.md"
+
+[[templates]]
+hash = "5574624bb54657e4c37ae39c70a8cd367d51d65d711936d5651004439701feb1"
+merge_policy = "merge-marker"
+path = "ops/AGENTS.md"
+
+[[templates]]
+hash = "1c89bf6f83eabda3ed2f5d7096aaa345cc74f0281368f72cea335d1b511dc7a6"
+merge_policy = "merge-marker"
+path = "python/ai-service/AGENTS.md"
+
+[[templates]]
+hash = "977174ecddf3d455f26cacee285fe21f6418730e8c34db253cddbd64e24fd69f"
+merge_policy = "keep-existing"
+path = "tools/security-lane.sh"
+
+[[templates]]
+hash = "2b7e33cca7bee728f4d4f691c2cc27551de7d6d9160a45dda9a2389d14ed1445"
+merge_policy = "keep-existing"
+path = "tools/jankurai-hooks/pre-commit"
+
+[[templates]]
+hash = "b472a2fbda74958c5a3a025296ee4f4860ebcfcc0a7063a24ae78f49a2915c9d"
+merge_policy = "keep-existing"
+path = "tools/jankurai-hooks/prepare-commit-msg"
+
+[[templates]]
+hash = "ce6f2cdc55ecf269e78b594f09f782518270174607d6786192b6d71a384ac4cb"
+merge_policy = "keep-existing"
+path = "tools/jankurai-hooks/pre-push"
+
+[[templates]]
+hash = "3a7726b647644ba1d41b62284968cfaa1341c84be6dc41043a6b52c099bd496a"
+merge_policy = "keep-existing"
+path = "ops/git-hooks/pre-push"

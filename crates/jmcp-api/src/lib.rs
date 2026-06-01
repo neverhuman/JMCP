@@ -1,21 +1,45 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
+    http::StatusCode,
     response::sse::{Event, Sse},
     routing::{get, post},
     Json, Router,
 };
+use chrono::Duration as ChronoDuration;
 use jcp_core::Envelope;
-use jmcp_app::AppState;
-use jmcp_domain::{AdapterHealth, SystemStatus};
+use jmcp_adapter_jeryu::{EcosystemSnapshot, HttpJeryuClient, JeryuEcosystem};
+use jmcp_app::{local_actor, AppState, ApprovalDecisionError};
+use jmcp_domain::{AdapterHealth, ApprovalDecision, SystemStatus};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{convert::Infallible, time::Duration};
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 use tower_http::cors::CorsLayer;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 struct EventsQuery {
     after: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateApprovalChallengeRequest {
+    work_order_id: Uuid,
+    approver: Option<String>,
+    ttl_seconds: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApprovalTokenRequest {
+    token: String,
+    approver: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApprovalDecisionRequest {
+    token: String,
+    decision: ApprovalDecision,
+    approver: Option<String>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -23,10 +47,19 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/systems", get(systems))
         .route("/work-orders", post(submit).get(list))
+        .route("/work-orders/:id", get(work_order))
         .route("/approvals", get(approvals))
+        .route(
+            "/approval-challenges",
+            get(approval_challenges).post(create_approval_challenge),
+        )
+        .route("/approvals/approve", post(approve_token))
+        .route("/approvals/deny", post(deny_token))
+        .route("/approvals/decisions", post(decide_token))
         .route("/leases", get(leases))
         .route("/evidence", get(evidence))
         .route("/adapters", get(adapters))
+        .route("/ecosystem", get(ecosystem))
         .route("/effects", get(effects))
         .route("/replay", get(replay).post(replay_now))
         .route("/events", get(events))
@@ -66,6 +99,17 @@ async fn list(
     Ok(Json(json!(work_orders)))
 }
 
+async fn work_order(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_order = state
+        .work_order(id)
+        .map_err(internal_error)?
+        .ok_or((StatusCode::NOT_FOUND, format!("work order not found: {id}")))?;
+    Ok(Json(json!(work_order)))
+}
+
 async fn systems(State(state): State<AppState>) -> Json<Value> {
     let systems = blocking_systems(state).await.unwrap_or_default();
     Json(json!(systems))
@@ -76,6 +120,53 @@ async fn approvals(
 ) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
     let approvals = state.list_approvals().map_err(internal_error)?;
     Ok(Json(json!(approvals)))
+}
+
+async fn approval_challenges(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let challenges = state.list_approval_challenges().map_err(internal_error)?;
+    Ok(Json(json!(challenges)))
+}
+
+async fn create_approval_challenge(
+    State(state): State<AppState>,
+    Json(request): Json<CreateApprovalChallengeRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let approver = request.approver.unwrap_or_else(|| "local".to_owned());
+    let ttl = request.ttl_seconds.map(ChronoDuration::seconds);
+    let created = state
+        .create_local_approval_challenge(request.work_order_id, approver, ttl)
+        .map_err(bad_request)?;
+    Ok(Json(json!(created)))
+}
+
+async fn approve_token(
+    State(state): State<AppState>,
+    Json(request): Json<ApprovalTokenRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    decide_with_token(state, request, ApprovalDecision::Approved)
+}
+
+async fn deny_token(
+    State(state): State<AppState>,
+    Json(request): Json<ApprovalTokenRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    decide_with_token(state, request, ApprovalDecision::Rejected)
+}
+
+async fn decide_token(
+    State(state): State<AppState>,
+    Json(request): Json<ApprovalDecisionRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    decide_with_token(
+        state,
+        ApprovalTokenRequest {
+            token: request.token,
+            approver: request.approver,
+        },
+        request.decision,
+    )
 }
 
 async fn leases(
@@ -102,6 +193,15 @@ async fn adapters(
         "service_cards": state.service_cards(),
         "health": health,
     })))
+}
+
+async fn ecosystem() -> Json<Value> {
+    let client = HttpJeryuClient::from_env();
+    let snapshot = client
+        .ecosystem()
+        .await
+        .unwrap_or_else(|err| EcosystemSnapshot::degraded(format!("jeryu ecosystem error: {err}")));
+    Json(json!(snapshot))
 }
 
 async fn effects(
@@ -145,6 +245,34 @@ fn internal_error(err: anyhow::Error) -> (axum::http::StatusCode, String) {
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         err.to_string(),
     )
+}
+
+fn bad_request(err: anyhow::Error) -> (StatusCode, String) {
+    (StatusCode::BAD_REQUEST, err.to_string())
+}
+
+fn decide_with_token(
+    state: AppState,
+    request: ApprovalTokenRequest,
+    decision: ApprovalDecision,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let actor = local_actor(request.approver.unwrap_or_else(|| "local".to_owned()));
+    let outcome = state
+        .decide_approval_by_token(&request.token, actor, decision)
+        .map_err(approval_decision_error)?;
+    Ok(Json(json!(outcome)))
+}
+
+fn approval_decision_error(err: ApprovalDecisionError) -> (StatusCode, String) {
+    let status = match err {
+        ApprovalDecisionError::UnknownToken => StatusCode::NOT_FOUND,
+        ApprovalDecisionError::Expired | ApprovalDecisionError::WrongApprover => {
+            StatusCode::FORBIDDEN
+        }
+        ApprovalDecisionError::AlreadyUsed => StatusCode::CONFLICT,
+        ApprovalDecisionError::UnavailableState(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, err.to_string())
 }
 
 async fn blocking_systems(state: AppState) -> Result<Vec<SystemStatus>, anyhow::Error> {

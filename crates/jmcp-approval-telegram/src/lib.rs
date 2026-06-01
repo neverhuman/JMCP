@@ -40,6 +40,17 @@ impl std::fmt::Debug for TelegramConfig {
 
 impl TelegramConfig {
     pub fn from_env_file(path: impl AsRef<Path>) -> Result<Self, TelegramApprovalError> {
+        Self::from_env_file_with_allowlist(path, true)
+    }
+
+    pub fn from_env_file_for_setup(path: impl AsRef<Path>) -> Result<Self, TelegramApprovalError> {
+        Self::from_env_file_with_allowlist(path, false)
+    }
+
+    fn from_env_file_with_allowlist(
+        path: impl AsRef<Path>,
+        require_allowlist: bool,
+    ) -> Result<Self, TelegramApprovalError> {
         let mut contents =
             std::fs::read_to_string(path).map_err(|_| TelegramApprovalError::TokenLoadFailed)?;
         append_env_override(&mut contents, "JMCP_TELEGRAM_BOT_TOKEN");
@@ -51,10 +62,21 @@ impl TelegramConfig {
         append_env_override(&mut contents, "TELEGRAM_ALLOWED_USER_IDS");
         append_env_override(&mut contents, "JMCP_TELEGRAM_ALLOWED_CHAT_IDS");
         append_env_override(&mut contents, "TELEGRAM_ALLOWED_CHAT_IDS");
-        Self::from_env_contents(&contents)
+        Self::from_env_contents_with_allowlist(&contents, require_allowlist)
     }
 
     pub fn from_env_contents(contents: &str) -> Result<Self, TelegramApprovalError> {
+        Self::from_env_contents_with_allowlist(contents, true)
+    }
+
+    pub fn from_env_contents_for_setup(contents: &str) -> Result<Self, TelegramApprovalError> {
+        Self::from_env_contents_with_allowlist(contents, false)
+    }
+
+    fn from_env_contents_with_allowlist(
+        contents: &str,
+        require_allowlist: bool,
+    ) -> Result<Self, TelegramApprovalError> {
         let mut token = None;
         let mut api_base = None;
         let mut allowed_user_ids = HashSet::new();
@@ -90,7 +112,7 @@ impl TelegramConfig {
         let token = token
             .filter(|value| !value.is_empty())
             .ok_or(TelegramApprovalError::MissingToken)?;
-        if allowed_user_ids.is_empty() && allowed_chat_ids.is_empty() {
+        if require_allowlist && allowed_user_ids.is_empty() && allowed_chat_ids.is_empty() {
             return Err(TelegramApprovalError::MissingAllowlist);
         }
         Ok(Self {
@@ -111,6 +133,10 @@ impl TelegramConfig {
         }
         (self.allowed_user_ids.is_empty() || self.allowed_user_ids.contains(&user_id))
             && (self.allowed_chat_ids.is_empty() || self.allowed_chat_ids.contains(&chat_id))
+    }
+
+    pub fn has_allowlist(&self) -> bool {
+        !self.allowed_user_ids.is_empty() || !self.allowed_chat_ids.is_empty()
     }
 }
 
@@ -310,7 +336,7 @@ fn append_env_override(contents: &mut String, key: &str) {
 
 pub fn render_prompt(challenge: &TelegramApprovalChallenge) -> String {
     format!(
-        "JMCP approval requested for work order {}. Reply APPROVE {} or REJECT {}.",
+        "JMCP approval requested for work order {}. Reply /approve {} or /deny {}.",
         challenge.work_order_id, challenge.token, challenge.token
     )
 }
@@ -332,9 +358,13 @@ pub fn parse_reply(
     if token != challenge.token {
         return Err(TelegramApprovalError::Forged);
     }
-    match decision.to_ascii_uppercase().as_str() {
+    match decision
+        .trim_start_matches('/')
+        .to_ascii_uppercase()
+        .as_str()
+    {
         "APPROVE" => Ok(ApprovalDecision::Approved),
-        "REJECT" => Ok(ApprovalDecision::Rejected),
+        "DENY" | "REJECT" => Ok(ApprovalDecision::Rejected),
         _ => Err(TelegramApprovalError::UnknownDecision),
     }
 }
@@ -448,6 +478,28 @@ mod tests {
         assert_eq!(
             parse_reply(&c, &msg, Utc::now()).unwrap(),
             ApprovalDecision::Approved
+        );
+    }
+
+    #[test]
+    fn accepts_slash_approval_commands() {
+        let c = challenge();
+        let approve = TelegramApprovalMessage {
+            user_id: 42,
+            text: "/approve tok".to_owned(),
+        };
+        let deny = TelegramApprovalMessage {
+            user_id: 42,
+            text: "/deny tok".to_owned(),
+        };
+
+        assert_eq!(
+            parse_reply(&c, &approve, Utc::now()).unwrap(),
+            ApprovalDecision::Approved
+        );
+        assert_eq!(
+            parse_reply(&c, &deny, Utc::now()).unwrap(),
+            ApprovalDecision::Rejected
         );
     }
 
@@ -598,10 +650,38 @@ mod tests {
     }
 
     #[test]
+    fn config_parses_raw_token_with_allowlist() {
+        let config =
+            TelegramConfig::from_env_contents("123:secret\nJMCP_TELEGRAM_ALLOWED_USER_IDS=42\n")
+                .unwrap();
+
+        assert!(config.has_allowlist());
+        assert!(config.is_allowed(42, 100));
+    }
+
+    #[test]
+    fn setup_config_allows_raw_token_without_allowlist() {
+        let config = TelegramConfig::from_env_contents_for_setup("123:secret\n").unwrap();
+
+        assert!(!config.has_allowlist());
+        assert!(!config.is_allowed(42, 100));
+    }
+
+    #[test]
     fn config_rejects_raw_token_file_without_allowlist() {
         assert!(matches!(
             TelegramConfig::from_env_contents("123:secret\n"),
             Err(TelegramApprovalError::MissingAllowlist)
+        ));
+    }
+
+    #[test]
+    fn config_rejects_invalid_allowlist_id() {
+        assert!(matches!(
+            TelegramConfig::from_env_contents(
+                "JMCP_TELEGRAM_BOT_TOKEN=123:secret\nJMCP_TELEGRAM_ALLOWED_USER_IDS=42,nope\n"
+            ),
+            Err(TelegramApprovalError::InvalidAllowlist)
         ));
     }
 

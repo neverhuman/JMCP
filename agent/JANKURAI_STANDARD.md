@@ -29,3 +29,5 @@ Each local adapter should document:
 
 Jankurai must not become a privileged bypass around JMCP governance. It may request actions, emit events, and provide local computation, but policy, approval, replay, and audit remain JMCP-owned concerns.
 
+
+<!-- jankurai merge marker: review and merge canonical guidance for agent/JANKURAI_STANDARD.md -->

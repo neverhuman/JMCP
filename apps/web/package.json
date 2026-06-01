@@ -1,0 +1,28 @@
+{
+  "name": "@jmcp/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "preview": "vite preview",
+    "test:ux": "playwright test",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/node": "^22.15.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

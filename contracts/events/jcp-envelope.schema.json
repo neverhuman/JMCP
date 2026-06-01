@@ -1,0 +1,73 @@
+{
+  "$id": "https://schemas.neverhuman.ai/jmcp/events/jcp-envelope.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JCPEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jcp_version",
+    "kind",
+    "message_id",
+    "message_type",
+    "producer",
+    "subject",
+    "time",
+    "trace",
+    "authority",
+    "policy",
+    "data",
+    "payload_hash",
+    "payload",
+    "signature"
+  ],
+  "properties": {
+    "jcp_version": {
+      "const": "1.0.0"
+    },
+    "kind": {
+      "const": "JCPEnvelope"
+    },
+    "message_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {},
+    "payload_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {},
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -1,9 +1,59 @@
 {
-  "version": 1,
-  "system": "JMCP",
-  "protocol": "JCP/1.0.0",
-  "transport_profile": "JPCM",
   "owners": {
+    ".github/": "ops",
+    "AGENTS.md": "agent",
+    "README.md": "workspace",
+    "adapters": {
+      "paths": [
+        "crates/**",
+        "apps/**"
+      ],
+      "responsibilities": [
+        "Telegram text intake and approvals",
+        "local Jankurai adapter",
+        "local Jeryu adapter",
+        "local Jekko adapter"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "agent/": "agent",
+    "agent/repo-score-baseline.json": "agent",
+    "agent/coverage-sources.toml": "agent",
+    "agent/zyal/": "agent",
+    ".agents/": "agent",
+    ".artifacts/": "ops",
+    "apps/": "apps",
+    "apps/web/": "apps",
+    "contracts/": "contracts",
+    "contracts/events/": "contracts",
+    "core-runtime": {
+      "paths": [
+        "crates/**"
+      ],
+      "responsibilities": [
+        "Rust backend",
+        "embedded SQLite integration",
+        "in-process replayable event bus",
+        "JCP/1.0.0 runtime enforcement"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "crates/": "tools",
+    "crates/jankurai/tests/fixtures/coverage/": "agent",
+    "dashboard": {
+      "paths": [
+        "apps/**"
+      ],
+      "responsibilities": [
+        "React dashboard",
+        "operator approvals",
+        "runtime observability"
+      ],
+      "status": "reserved-not-owned-by-this-slice"
+    },
+    "db/": "data",
+    "docs/": "standard",
+    "docs/COVERAGE_*.md": "agent",
     "governance": {
       "paths": [
         "AGENT_CHAT.md",
@@ -22,29 +72,12 @@
         "final architecture paper"
       ]
     },
-    "core-runtime": {
-      "paths": [
-        "crates/**"
-      ],
-      "responsibilities": [
-        "Rust backend",
-        "embedded SQLite integration",
-        "in-process replayable event bus",
-        "JCP/1.0.0 runtime enforcement"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    },
-    "dashboard": {
-      "paths": [
-        "apps/**"
-      ],
-      "responsibilities": [
-        "React dashboard",
-        "operator approvals",
-        "runtime observability"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    },
+    "ops/": "ops",
+    "ops/git-hooks/": "ops",
+    "packages/": "tools",
+    "python/ai-service/": "ai",
+    "schemas/coverage-*.schema.json": "agent",
+    "tools/": "tools",
     "tui": {
       "paths": [
         "apps/**",
@@ -55,20 +88,11 @@
         "local operator workflows"
       ],
       "status": "reserved-not-owned-by-this-slice"
-    },
-    "adapters": {
-      "paths": [
-        "crates/**",
-        "apps/**"
-      ],
-      "responsibilities": [
-        "Telegram text intake and approvals",
-        "local Jankurai adapter",
-        "local Jeryu adapter",
-        "local Jekko adapter"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
     }
-  }
+  },
+  "protocol": "JCP/1.0.0",
+  "system": "JMCP",
+  "transport_profile": "JPCM",
+  "version": 1,
+  "workspace": "jankurai"
 }
-

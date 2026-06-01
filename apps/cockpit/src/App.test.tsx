@@ -29,7 +29,7 @@ describe("JMCP cockpit", () => {
     await user.click(screen.getByRole("button", { name: "Approvals" }));
 
     expect(screen.getByRole("heading", { name: "Approvals", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText("Allow bridge to request a temporary write lease")).toBeInTheDocument();
+    expect(screen.getByText("Approve bridge write-lease request")).toBeInTheDocument();
   });
 
   it("shows the Jeryu ecosystem tool graph", async () => {

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use jmcp_domain::{
-    AdapterHealth, Approval, EffectLedgerEntry, Evidence, Lease, ReplayCheckpoint, WorkOrder,
+    AdapterHealth, Approval, ApprovalChallenge, EffectLedgerEntry, Evidence, Lease,
+    ReplayCheckpoint, WorkOrder,
 };
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -70,6 +71,19 @@ impl SqliteStore {
                 updated_at text not null,
                 primary key (work_order_id, approver)
             );
+            create table if not exists approval_challenges (
+                id text primary key,
+                work_order_id text not null,
+                approver text not null,
+                channel text not null,
+                target_user_id integer,
+                target_chat_id integer,
+                token_hash text not null unique,
+                expires_at text not null,
+                state text not null,
+                data text not null,
+                updated_at text not null
+            );
             create table if not exists evidence (
                 id integer primary key autoincrement,
                 work_order_id text,
@@ -132,6 +146,20 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn record_approval_challenge(&self, challenge: &ApprovalChallenge) -> Result<()> {
+        let data = serde_json::to_value(challenge)?;
+        let tx = self.conn.unchecked_transaction()?;
+        append_event_on(
+            &tx,
+            challenge.work_order_id,
+            "approval.challenge.recorded",
+            &data,
+        )?;
+        project_approval_challenge_on(&tx, challenge, &data)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn record_evidence(&self, work_order_id: Option<Uuid>, evidence: &Evidence) -> Result<()> {
         let data = serde_json::to_value(evidence)?;
         let tx = self.conn.unchecked_transaction()?;
@@ -186,12 +214,40 @@ impl SqliteStore {
         self.list_json("select data from work_orders order by updated_at desc")
     }
 
+    pub fn get_work_order(&self, id: Uuid) -> Result<Option<WorkOrder>> {
+        self.get_json(
+            "select data from work_orders where id = ?1",
+            [id.to_string()],
+        )
+    }
+
     pub fn list_leases(&self) -> Result<Vec<Lease>> {
         self.list_json("select data from leases order by updated_at desc")
     }
 
     pub fn list_approvals(&self) -> Result<Vec<Approval>> {
         self.list_json("select data from approvals order by updated_at desc")
+    }
+
+    pub fn get_approval(&self, work_order_id: Uuid, approver: &str) -> Result<Option<Approval>> {
+        self.get_json(
+            "select data from approvals where work_order_id = ?1 and approver = ?2",
+            [work_order_id.to_string(), approver.to_owned()],
+        )
+    }
+
+    pub fn list_approval_challenges(&self) -> Result<Vec<ApprovalChallenge>> {
+        self.list_json("select data from approval_challenges order by updated_at desc")
+    }
+
+    pub fn approval_challenge_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<ApprovalChallenge>> {
+        self.get_json(
+            "select data from approval_challenges where token_hash = ?1",
+            [token_hash.to_owned()],
+        )
     }
 
     pub fn list_evidence(&self) -> Result<Vec<Evidence>> {
@@ -221,6 +277,19 @@ impl SqliteStore {
             serde_json::from_str(&data).context("decode stored json")
         })
         .collect()
+    }
+
+    fn get_json<T, P>(&self, sql: &str, params: P) -> Result<Option<T>>
+    where
+        T: serde::de::DeserializeOwned,
+        P: rusqlite::Params,
+    {
+        let data: Option<String> = self
+            .conn
+            .query_row(sql, params, |row| row.get(0))
+            .optional()?;
+        data.map(|data| serde_json::from_str(&data).context("decode stored json"))
+            .transpose()
     }
 
     pub fn event_count(&self) -> Result<i64> {
@@ -267,6 +336,10 @@ impl SqliteStore {
                     let approval: Approval = serde_json::from_str(&data)?;
                     projection.approvals.push(approval);
                 }
+                "approval.challenge.recorded" => {
+                    let challenge: ApprovalChallenge = serde_json::from_str(&data)?;
+                    projection.approval_challenges.push(challenge);
+                }
                 "evidence.recorded" => {
                     let evidence: Evidence = serde_json::from_str(&data)?;
                     if let Some(work_order) = projection.work_orders.get_mut(&aggregate_id) {
@@ -307,6 +380,7 @@ impl SqliteStore {
         tx.execute("delete from work_orders", [])?;
         tx.execute("delete from leases", [])?;
         tx.execute("delete from approvals", [])?;
+        tx.execute("delete from approval_challenges", [])?;
         tx.execute("delete from evidence", [])?;
         tx.execute("delete from adapter_health", [])?;
         tx.execute("delete from effect_ledger", [])?;
@@ -322,6 +396,10 @@ impl SqliteStore {
         for approval in &projection.approvals {
             let data = serde_json::to_value(approval)?;
             project_approval_on(&tx, approval, &data)?;
+        }
+        for challenge in &projection.approval_challenges {
+            let data = serde_json::to_value(challenge)?;
+            project_approval_challenge_on(&tx, challenge, &data)?;
         }
         for (work_order_id, evidence) in &projection.evidence {
             let data = serde_json::to_value(evidence)?;
@@ -388,6 +466,7 @@ struct ReplayProjection {
     work_orders: HashMap<Uuid, WorkOrder>,
     leases: Vec<Lease>,
     approvals: Vec<Approval>,
+    approval_challenges: Vec<ApprovalChallenge>,
     evidence: Vec<(Option<Uuid>, Evidence)>,
     adapter_health: Vec<AdapterHealth>,
     effects: Vec<EffectLedgerEntry>,
@@ -452,6 +531,31 @@ fn project_approval_on(conn: &Connection, approval: &Approval, data: &Value) -> 
     Ok(())
 }
 
+fn project_approval_challenge_on(
+    conn: &Connection,
+    challenge: &ApprovalChallenge,
+    data: &Value,
+) -> Result<()> {
+    conn.execute(
+            "insert into approval_challenges (id, work_order_id, approver, channel, target_user_id, target_chat_id, token_hash, expires_at, state, data, updated_at) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             on conflict(id) do update set expires_at=excluded.expires_at, state=excluded.state, data=excluded.data, updated_at=excluded.updated_at",
+            params![
+                challenge.id.to_string(),
+                challenge.work_order_id.to_string(),
+                challenge.approver,
+                format!("{:?}", challenge.channel),
+                challenge.target_user_id,
+                challenge.target_chat_id,
+                challenge.token_hash,
+                challenge.expires_at.to_rfc3339(),
+                format!("{:?}", challenge.state),
+                data.to_string(),
+                challenge.updated_at.to_rfc3339(),
+            ],
+        )?;
+    Ok(())
+}
+
 fn project_evidence_on(
     conn: &Connection,
     work_order_id: Option<Uuid>,
@@ -511,7 +615,10 @@ fn project_effect_on(conn: &Connection, effect: &EffectLedgerEntry, data: &Value
 mod tests {
     use super::*;
     use chrono::Duration;
-    use jmcp_domain::{Approval, Evidence, Lease, WorkOrder};
+    use jmcp_domain::{
+        Approval, ApprovalChallenge, ApprovalChallengeState, ApprovalChannel, Evidence, Lease,
+        WorkOrder,
+    };
     use serde_json::json;
 
     #[test]
@@ -540,6 +647,15 @@ mod tests {
             expires_at: Utc::now() + Duration::minutes(5),
             decision: None,
         };
+        let challenge = ApprovalChallenge::new(
+            wo.id,
+            "user",
+            ApprovalChannel::Local,
+            None,
+            None,
+            "sha256:test",
+            Utc::now() + Duration::minutes(5),
+        );
         let evidence = Evidence {
             kind: "command.digest".to_owned(),
             uri: "sha256:test".to_owned(),
@@ -551,15 +667,36 @@ mod tests {
             .unwrap();
         store.record_lease(&lease).unwrap();
         store.record_approval(&approval).unwrap();
+        store.record_approval_challenge(&challenge).unwrap();
         store.record_evidence(Some(wo.id), &evidence).unwrap();
 
+        assert_eq!(store.get_work_order(wo.id).unwrap(), Some(wo.clone()));
+        assert_eq!(
+            store.get_approval(wo.id, "user").unwrap(),
+            Some(approval.clone())
+        );
         assert_eq!(store.list_leases().unwrap(), vec![lease]);
         assert_eq!(store.list_approvals().unwrap(), vec![approval]);
+        assert_eq!(
+            store
+                .approval_challenge_by_token_hash("sha256:test")
+                .unwrap(),
+            Some(challenge.clone())
+        );
+        assert_eq!(store.list_approval_challenges().unwrap(), vec![challenge]);
         assert_eq!(store.list_evidence().unwrap(), vec![evidence]);
 
         let checkpoint = store.rebuild_work_order_projection_from_events().unwrap();
         assert_eq!(checkpoint.rebuilt_work_orders, 1);
         assert!(!checkpoint.side_effects_reissued);
         assert_eq!(store.list_replay_checkpoints().unwrap().len(), 1);
+        assert_eq!(
+            store
+                .approval_challenge_by_token_hash("sha256:test")
+                .unwrap()
+                .unwrap()
+                .state,
+            ApprovalChallengeState::Pending
+        );
     }
 }

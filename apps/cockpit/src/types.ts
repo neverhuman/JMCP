@@ -76,6 +76,9 @@ export interface ReplayEvent {
 
 export interface ApprovalRequest {
   id: string;
+  workOrderId: string;
+  channel: string;
+  state: string;
   decision: string;
   reason: string;
   risk: Risk;

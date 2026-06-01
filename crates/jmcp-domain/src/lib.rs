@@ -19,6 +19,8 @@ pub enum DomainError {
     LeaseHolderMismatch,
     #[error("approval expired")]
     ApprovalExpired,
+    #[error("approval challenge already used")]
+    ApprovalAlreadyUsed,
     #[error("wrong approver")]
     WrongApprover,
 }
@@ -86,6 +88,45 @@ pub struct Approval {
 pub enum ApprovalDecision {
     Approved,
     Rejected,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalChannel {
+    Local,
+    Telegram,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalChallengeState {
+    Pending,
+    Approved,
+    Rejected,
+    Expired,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ApprovalChallenge {
+    pub id: Uuid,
+    pub work_order_id: Uuid,
+    pub approver: String,
+    pub channel: ApprovalChannel,
+    pub target_user_id: Option<i64>,
+    pub target_chat_id: Option<i64>,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub state: ApprovalChallengeState,
+    pub decision: Option<ApprovalDecision>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ApprovalActor {
+    pub approver: String,
+    pub telegram_user_id: Option<i64>,
+    pub telegram_chat_id: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -299,6 +340,64 @@ impl WorkOrder {
     }
 }
 
+impl ApprovalChallenge {
+    pub fn new(
+        work_order_id: Uuid,
+        approver: impl Into<String>,
+        channel: ApprovalChannel,
+        target_user_id: Option<i64>,
+        target_chat_id: Option<i64>,
+        token_hash: impl Into<String>,
+        expires_at: DateTime<Utc>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            work_order_id,
+            approver: approver.into(),
+            channel,
+            target_user_id,
+            target_chat_id,
+            token_hash: token_hash.into(),
+            expires_at,
+            state: ApprovalChallengeState::Pending,
+            decision: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn decide(
+        &mut self,
+        actor: &ApprovalActor,
+        decision: ApprovalDecision,
+        now: DateTime<Utc>,
+    ) -> Result<(), DomainError> {
+        if self.state != ApprovalChallengeState::Pending {
+            return Err(DomainError::ApprovalAlreadyUsed);
+        }
+        if now > self.expires_at {
+            self.state = ApprovalChallengeState::Expired;
+            self.updated_at = now;
+            return Err(DomainError::ApprovalExpired);
+        }
+        if self.approver != actor.approver
+            || self.target_user_id != actor.telegram_user_id
+            || self.target_chat_id != actor.telegram_chat_id
+        {
+            return Err(DomainError::WrongApprover);
+        }
+
+        self.state = match decision {
+            ApprovalDecision::Approved => ApprovalChallengeState::Approved,
+            ApprovalDecision::Rejected => ApprovalChallengeState::Rejected,
+        };
+        self.decision = Some(decision);
+        self.updated_at = now;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +429,82 @@ mod tests {
             first.apply_approval(&mut approval, "user", ApprovalDecision::Approved),
             Err(DomainError::LeaseWrongWorkOrder)
         );
+    }
+
+    #[test]
+    fn challenge_is_single_use_and_token_free() {
+        let mut challenge = ApprovalChallenge::new(
+            Uuid::new_v4(),
+            "telegram:user:42",
+            ApprovalChannel::Telegram,
+            Some(42),
+            Some(99),
+            "sha256:test",
+            Utc::now() + Duration::minutes(5),
+        );
+        let actor = ApprovalActor {
+            approver: "telegram:user:42".to_owned(),
+            telegram_user_id: Some(42),
+            telegram_chat_id: Some(99),
+        };
+
+        challenge
+            .decide(&actor, ApprovalDecision::Approved, Utc::now())
+            .unwrap();
+
+        assert_eq!(challenge.state, ApprovalChallengeState::Approved);
+        assert_eq!(challenge.decision, Some(ApprovalDecision::Approved));
+        assert_eq!(
+            challenge.decide(&actor, ApprovalDecision::Rejected, Utc::now()),
+            Err(DomainError::ApprovalAlreadyUsed)
+        );
+    }
+
+    #[test]
+    fn challenge_rejects_wrong_telegram_actor() {
+        let mut challenge = ApprovalChallenge::new(
+            Uuid::new_v4(),
+            "telegram:user:42",
+            ApprovalChannel::Telegram,
+            Some(42),
+            Some(99),
+            "sha256:test",
+            Utc::now() + Duration::minutes(5),
+        );
+        let actor = ApprovalActor {
+            approver: "telegram:user:7".to_owned(),
+            telegram_user_id: Some(7),
+            telegram_chat_id: Some(99),
+        };
+
+        assert_eq!(
+            challenge.decide(&actor, ApprovalDecision::Approved, Utc::now()),
+            Err(DomainError::WrongApprover)
+        );
+        assert_eq!(challenge.state, ApprovalChallengeState::Pending);
+    }
+
+    #[test]
+    fn expired_challenge_is_marked_expired() {
+        let mut challenge = ApprovalChallenge::new(
+            Uuid::new_v4(),
+            "user",
+            ApprovalChannel::Local,
+            None,
+            None,
+            "sha256:test",
+            Utc::now() - Duration::seconds(1),
+        );
+        let actor = ApprovalActor {
+            approver: "user".to_owned(),
+            telegram_user_id: None,
+            telegram_chat_id: None,
+        };
+
+        assert_eq!(
+            challenge.decide(&actor, ApprovalDecision::Approved, Utc::now()),
+            Err(DomainError::ApprovalExpired)
+        );
+        assert_eq!(challenge.state, ApprovalChallengeState::Expired);
     }
 }

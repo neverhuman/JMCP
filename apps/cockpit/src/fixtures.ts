@@ -23,7 +23,7 @@ export const views: ViewDefinition[] = [
 export const workItems: WorkItem[] = [
   {
     id: "WO-1042",
-    title: "Promote JCP schema bindings into sdk crate",
+    title: "Promote JCP schema bindings into the SDK crate",
     owner: "jmcp-core",
     state: "evidence-gate",
     risk: "medium",
@@ -33,7 +33,7 @@ export const workItems: WorkItem[] = [
   },
   {
     id: "WO-1043",
-    title: "Quarantine legacy MCP bridge until service card is complete",
+    title: "Quarantine the MCP bridge until the service card is complete",
     owner: "adapter/mcp",
     state: "blocked",
     risk: "high",
@@ -213,14 +213,20 @@ export const replayEvents: ReplayEvent[] = [
 export const approvalRequests: ApprovalRequest[] = [
   {
     id: "AP-88",
-    decision: "Allow bridge to request a temporary write lease",
-    reason: "Legacy MCP bridge lacks C1 service-card evidence.",
+    workOrderId: "WO-1043",
+    channel: "telegram",
+    state: "pending",
+    decision: "Approve bridge write-lease request",
+    reason: "The bridge lacks C1 service-card evidence.",
     risk: "high",
     expires: "6m",
   },
   {
     id: "AP-89",
-    decision: "Promote memory lesson ML-221 globally",
+    workOrderId: "ML-221",
+    channel: "local",
+    state: "pending",
+    decision: "Promote memory lesson ML-221",
     reason: "Lesson affects authority policy across all workers.",
     risk: "medium",
     expires: "22m",

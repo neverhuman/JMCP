@@ -11,6 +11,8 @@ jcp-core = { path = "../jcp-core" }
 jmcp-attention = { path = "../jmcp-attention" }
 jmcp-domain = { path = "../jmcp-domain" }
 jmcp-store = { path = "../jmcp-store" }
+hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 uuid.workspace = true
