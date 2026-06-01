@@ -18,6 +18,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 
+mod ecosystem;
+pub use ecosystem::{EcosystemSnapshot, EcosystemTool, JeryuEcosystem};
+
 const DEFAULT_JERYU_BASE_URL: &str = "http://127.0.0.1:8799";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
@@ -60,9 +63,9 @@ pub trait JeryuClient: Send + Sync {
 /// never logged. See [`HttpJeryuClient::from_env`].
 #[derive(Clone)]
 pub struct HttpJeryuClient {
-    http: reqwest::Client,
-    base_url: String,
-    api_key: Option<String>,
+    pub(crate) http: reqwest::Client,
+    pub(crate) base_url: String,
+    pub(crate) api_key: Option<String>,
 }
 
 impl HttpJeryuClient {
@@ -82,7 +85,7 @@ impl HttpJeryuClient {
         }
     }
 
-    fn authed(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    pub(crate) fn authed(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         if let Some(key) = &self.api_key {
             builder.bearer_auth(key)
         } else {
