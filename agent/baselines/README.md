@@ -1,18 +1,23 @@
 # Jankurai ratchet baseline
 
-`main.repo-score.json` is the **accepted floor**: the `jankurai audit` result that
-new commits may not regress below. It is seeded/bumped — never lowered — via:
+The accepted **floor** is `agent/repo-score-baseline.json` (a compact summary —
+`{score, raw_score, caps_applied, rule_counts}` — shared with the CI audit lane).
+New commits may not regress below it: a lower score, a newly-applied cap, or more
+total findings is rejected.
+
+It is seeded/bumped — never lowered — via:
 
 ```sh
-ops/ci/jankurai-ratchet.sh --accept   # re-audit a clean tree and accept it as the floor
+ops/ci/jankurai-ratchet.sh --accept   # re-audit, accept the current (improved) result as the floor
+git config core.hooksPath ops/git-hooks   # activate the local pre-commit/pre-push hooks
 ```
 
-The ratchet (`ops/ci/jankurai-ratchet.sh`, run by `ops/git-hooks/{pre-commit,pre-push}`
-and the CI ratchet job) fails any change that lowers the final score, adds a new
-applied cap, or raises the hard-finding count versus this file. Activate the local
-hooks with `git config core.hooksPath ops/git-hooks`.
+`ops/ci/jankurai-ratchet.sh` (run by `ops/git-hooks/{pre-commit,pre-push}` and the
+CI ratchet step) re-audits and exits non-zero on any regression versus the floor.
+It reads the compact summary format above; do **not** point `jankurai audit
+--baseline` at it (that flag needs a full native report with `report_fingerprint`).
 
-Seeding is intentionally deferred until the in-flight jankurai remediation reaches a
-stable, improved committed state, so the floor reflects real conformance — not a
-mid-refactor working tree. Until `main.repo-score.json` exists the ratchet no-ops
-(it cannot regress against an absent floor); the CI job seeds it on first green main.
+The floor is bumped to a stable, improved committed state as the jankurai
+remediation lands, so it reflects real conformance — never a mid-refactor working
+tree. While the floor still carries a cap, the ratchet reports it as a regression
+only if a *new* cap appears or the score/finding totals worsen.
