@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Archive,
+  Boxes,
   CheckCircle2,
   CircleDot,
   Database,
@@ -11,6 +12,7 @@ import {
   History,
   KeyRound,
   Layers3,
+  Network,
   ShieldAlert,
   Wrench,
 } from "lucide-react";
@@ -24,7 +26,19 @@ import {
   views,
   workItems,
 } from "./fixtures";
-import type { Health, Risk, ViewId } from "./types";
+import type {
+  ApprovalRequest,
+  EvidenceBundle,
+  Health,
+  ReplayEvent,
+  Risk,
+  SystemNode,
+  ToolAsset,
+  ViewId,
+  WorkItem,
+} from "./types";
+
+const apiUrl = import.meta.env.VITE_JMCP_API_URL ?? "http://127.0.0.1:18877";
 
 const icons = {
   now: Gauge,
@@ -47,10 +61,39 @@ function classForHealth(health: Health) {
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("now");
+  const [runtime, setRuntime] = useState(() => ({
+    apiHealth: "degraded" as Health,
+    workItems,
+    evidenceBundles,
+    systems,
+    toolAssets,
+    replayEvents,
+    approvalRequests,
+    loadedAt: "fixture",
+    usingFixtures: true,
+  }));
   const currentView = useMemo(
     () => views.find((view) => view.id === activeView) ?? views[0],
     [activeView],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    loadRuntime()
+      .then((nextRuntime) => {
+        if (!cancelled) {
+          setRuntime(nextRuntime);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntime((current) => ({ ...current, apiHealth: "degraded" }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="shell">
@@ -92,7 +135,7 @@ function App() {
             <Activity size={18} aria-hidden="true" />
             <div>
               <span>Backbone</span>
-              <strong>JPCM stream healthy</strong>
+              <strong>JPCM stream {runtime.apiHealth === "nominal" ? "healthy" : "degraded"}</strong>
             </div>
           </div>
         </header>
@@ -103,32 +146,33 @@ function App() {
               <p className="eyebrow">Current slice</p>
               <h2 id="view-heading">{currentView.description}</h2>
             </div>
-            <span className="timestamp">Updated 12:09 UTC</span>
+            <span className="timestamp">Updated {runtime.loadedAt}</span>
           </div>
-          {activeView === "now" && <NowView />}
-          {activeView === "work" && <WorkView />}
-          {activeView === "evidence" && <EvidenceView />}
-          {activeView === "systems" && <SystemsView />}
-          {activeView === "tools-data" && <ToolsDataView />}
+          {activeView === "now" && <NowView runtime={runtime} />}
+          {activeView === "work" && <WorkView workItems={runtime.workItems} />}
+          {activeView === "evidence" && <EvidenceView evidenceBundles={runtime.evidenceBundles} />}
+          {activeView === "systems" && <SystemsView systems={runtime.systems} />}
+          {activeView === "tools-data" && <ToolsDataView runtime={runtime} />}
           {activeView === "memory-lite" && <MemoryLiteView />}
-          {activeView === "replay" && <ReplayView />}
-          {activeView === "approvals" && <ApprovalsView />}
+          {activeView === "replay" && <ReplayView replayEvents={runtime.replayEvents} />}
+          {activeView === "approvals" && <ApprovalsView approvalRequests={runtime.approvalRequests} />}
         </section>
       </main>
     </div>
   );
 }
 
-function NowView() {
-  const blocked = workItems.filter((item) => item.state === "blocked").length;
-  const pendingEvidence = evidenceBundles.filter((bundle) => bundle.status === "pending").length;
+function NowView({ runtime }: { runtime: RuntimeState }) {
+  const blocked = runtime.workItems.filter((item) => item.state === "blocked").length;
+  const pendingEvidence = runtime.evidenceBundles.filter((bundle) => bundle.status === "pending").length;
+  const leased = runtime.workItems.filter((item) => item.lease !== "lease required").length;
 
   return (
     <div className="dashboard-grid">
-      <MetricCard label="Open work" value={workItems.length.toString()} tone="green" detail="2 leased workers active" />
-      <MetricCard label="Evidence pending" value={pendingEvidence.toString()} tone="amber" detail="1 proof bundle needs review" />
+      <MetricCard label="Open work" value={runtime.workItems.length.toString()} tone="green" detail={`${leased} leased workers active`} />
+      <MetricCard label="Evidence pending" value={pendingEvidence.toString()} tone="amber" detail={`${pendingEvidence} proof bundles need review`} />
       <MetricCard label="Blocked" value={blocked.toString()} tone="red" detail="adapter authority gap" />
-      <MetricCard label="Approvals" value={approvalRequests.length.toString()} tone="ink" detail="oldest expires in 6m" />
+      <MetricCard label="Approvals" value={runtime.approvalRequests.length.toString()} tone="ink" detail={runtime.usingFixtures ? "fixture fallback" : "live API"} />
 
       <section className="attention-strip">
         <div>
@@ -142,9 +186,10 @@ function NowView() {
       </section>
 
       <section className="list-panel wide">
-        <PanelHeader icon={CircleDot} title="Live Work" meta={`${workItems.length} work orders`} />
+        <PanelHeader icon={CircleDot} title="Live Work" meta={`${runtime.workItems.length} work orders`} />
         <div className="rows">
-          {workItems.map((item) => (
+          {runtime.workItems.length === 0 && <EmptyRow label="No work orders" />}
+          {runtime.workItems.map((item) => (
             <WorkRow key={item.id} item={item} />
           ))}
         </div>
@@ -153,11 +198,12 @@ function NowView() {
   );
 }
 
-function WorkView() {
+function WorkView({ workItems }: { workItems: WorkItem[] }) {
   return (
     <section className="list-panel">
       <PanelHeader icon={GitBranch} title="Work Orders" meta="Task state, risk, lease, proof count" />
       <div className="rows">
+        {workItems.length === 0 && <EmptyRow label="No work orders" />}
         {workItems.map((item) => (
           <WorkRow key={item.id} item={item} />
         ))}
@@ -166,11 +212,12 @@ function WorkView() {
   );
 }
 
-function EvidenceView() {
+function EvidenceView({ evidenceBundles }: { evidenceBundles: EvidenceBundle[] }) {
   return (
     <section className="list-panel">
       <PanelHeader icon={FileCheck2} title="Evidence Bundles" meta="Promotion requires accepted proof" />
       <div className="rows">
+        {evidenceBundles.length === 0 && <EmptyRow label="No evidence bundles" />}
         {evidenceBundles.map((bundle) => (
           <article className="row" key={bundle.id}>
             <div>
@@ -187,9 +234,10 @@ function EvidenceView() {
   );
 }
 
-function SystemsView() {
+function SystemsView({ systems }: { systems: SystemNode[] }) {
   return (
     <section className="card-grid">
+      {systems.length === 0 && <EmptyCard label="No systems reported" />}
       {systems.map((system) => (
         <article className="system-card" key={system.name}>
           <div className="system-card-head">
@@ -213,24 +261,76 @@ function SystemsView() {
   );
 }
 
-function ToolsDataView() {
+function ToolsDataView({ runtime }: { runtime: RuntimeState }) {
+  const repos = Array.from(new Set(runtime.toolAssets.map((tool) => tool.repo ?? "local")));
+  const queueTotal =
+    runtime.workItems.length + runtime.toolAssets.reduce((sum, tool) => sum + (tool.queue ?? 0), 0);
+  const attentionSystems = runtime.systems.filter((system) => system.health !== "nominal");
+
   return (
-    <section className="list-panel">
-      <PanelHeader icon={Wrench} title="Tools And Data Assets" meta="Conformance, side effects, data classes" />
-      <div className="rows">
-        {toolAssets.map((tool) => (
-          <article className="row tool-row" key={tool.name}>
-            <div>
-              <strong>{tool.name}</strong>
-              <span>{tool.className}</span>
-            </div>
-            <span className="pill neutral">{tool.conformance}</span>
-            <span>{tool.sideEffects}</span>
-            <span>{tool.dataClasses.join(", ")}</span>
-          </article>
-        ))}
-      </div>
-    </section>
+    <div className="tool-portal">
+      <section className="ecosystem-hero">
+        <div>
+          <p className="eyebrow">Jeryu Ecosystem</p>
+          <h3>{runtime.toolAssets.length} tools across {repos.length} repos</h3>
+          <p>Jeryu evidence, Jankurai audits, Jekko workers, and JMCP leases are tracked as one governed graph.</p>
+        </div>
+        <div className="queue-dial" aria-label={`${queueTotal} active queued items`}>
+          <strong>{queueTotal}</strong>
+          <span>active queue</span>
+        </div>
+      </section>
+
+      <section className="ecosystem-grid">
+        <div className="tool-map">
+          {runtime.toolAssets.map((tool, index) => (
+            <article className={`tool-node tool-node-${tool.health ?? "nominal"}`} key={tool.name}>
+              <div>
+                <Boxes size={18} aria-hidden="true" />
+                <strong>{tool.name}</strong>
+              </div>
+              <span>{tool.repo ?? "local"} / {tool.provider ?? "jmcp"}</span>
+              <small>{tool.dependsOn?.join(" -> ") ?? "direct"}</small>
+              <i style={{ width: `${Math.max(18, 94 - index * 9)}%` }} />
+            </article>
+          ))}
+        </div>
+
+        <aside className="attention-panel">
+          <PanelHeader icon={ShieldAlert} title="Needs Attention" meta={`${attentionSystems.length} systems`} />
+          <div className="attention-list">
+            {attentionSystems.length === 0 && <EmptyRow label="No systems need attention" />}
+            {attentionSystems.map((system) => (
+              <article className="attention-row" key={system.name}>
+                <Network size={16} aria-hidden="true" />
+                <div>
+                  <strong>{system.name}</strong>
+                  <span>{system.role}</span>
+                </div>
+                <span className={classForHealth(system.health)}>{system.health}</span>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section className="list-panel">
+        <PanelHeader icon={Wrench} title="Tools And Data Assets" meta="Conformance, side effects, data classes" />
+        <div className="rows">
+          {runtime.toolAssets.map((tool) => (
+            <article className="row tool-row" key={tool.name}>
+              <div>
+                <strong>{tool.name}</strong>
+                <span>{tool.className}</span>
+              </div>
+              <span className={classForHealth(tool.health ?? "nominal")}>{tool.health ?? "nominal"}</span>
+              <span>{tool.sideEffects}</span>
+              <span>{tool.dataClasses.join(", ")}</span>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -254,11 +354,12 @@ function MemoryLiteView() {
   );
 }
 
-function ReplayView() {
+function ReplayView({ replayEvents }: { replayEvents: ReplayEvent[] }) {
   return (
     <section className="list-panel">
       <PanelHeader icon={History} title="Replay Ledger" meta="JPCM events reconstruct state" />
       <div className="timeline">
+        {replayEvents.length === 0 && <EmptyRow label="No replay events" />}
         {replayEvents.map((event) => (
           <article className="timeline-item" key={event.sequence}>
             <span className="sequence">{event.sequence}</span>
@@ -275,9 +376,10 @@ function ReplayView() {
   );
 }
 
-function ApprovalsView() {
+function ApprovalsView({ approvalRequests }: { approvalRequests: ApprovalRequest[] }) {
   return (
     <section className="card-grid">
+      {approvalRequests.length === 0 && <EmptyCard label="No approvals pending" />}
       {approvalRequests.map((approval) => (
         <article className="approval-card" key={approval.id}>
           <div className="system-card-head">
@@ -325,7 +427,7 @@ function PanelHeader({ icon: Icon, title, meta }: { icon: typeof CircleDot; titl
   );
 }
 
-function WorkRow({ item }: { item: (typeof workItems)[number] }) {
+function WorkRow({ item }: { item: WorkItem }) {
   return (
     <article className="row work-row">
       <div>
@@ -342,3 +444,245 @@ function WorkRow({ item }: { item: (typeof workItems)[number] }) {
 }
 
 export default App;
+
+function EmptyRow({ label }: { label: string }) {
+  return <article className="row">{label}</article>;
+}
+
+function EmptyCard({ label }: { label: string }) {
+  return (
+    <article className="system-card">
+      <strong>{label}</strong>
+      <p>JMCP has no live records for this view.</p>
+    </article>
+  );
+}
+
+type RuntimeState = {
+  apiHealth: Health;
+  workItems: WorkItem[];
+  evidenceBundles: EvidenceBundle[];
+  systems: SystemNode[];
+  toolAssets: ToolAsset[];
+  replayEvents: ReplayEvent[];
+  approvalRequests: ApprovalRequest[];
+  loadedAt: string;
+  usingFixtures: boolean;
+};
+
+type ApiWorkOrder = {
+  id: string;
+  subject: string;
+  status: string;
+  task: { kind: string };
+  evidence: unknown[];
+  updated_at: string;
+};
+
+type ApiEvidence = {
+  kind: string;
+  uri: string;
+  captured_at: string;
+};
+
+type ApiApproval = {
+  work_order_id: string;
+  approver: string;
+  expires_at: string;
+  decision?: string | null;
+};
+
+type ApiReplay = {
+  events: number;
+  checkpoints: Array<{ id: string; last_event_id: number; created_at: string }>;
+};
+
+type ApiAdapters = {
+  service_cards: Array<{
+    name: string;
+    capabilities: string[];
+    subjects: string[];
+  }>;
+  health: Array<{
+    name: string;
+    health: Health;
+    endpoint?: string | null;
+    detail: string;
+  }>;
+};
+
+async function loadRuntime(): Promise<RuntimeState> {
+  if (typeof fetch !== "function") {
+    return {
+      apiHealth: "degraded",
+      workItems,
+      evidenceBundles,
+      systems,
+      toolAssets,
+      replayEvents,
+      approvalRequests,
+      loadedAt: "fixture",
+      usingFixtures: true,
+    };
+  }
+
+  const [health, apiWork, apiEvidence, apiSystems, apiReplay, apiApprovals, apiAdapters] = await Promise.allSettled([
+    getJson<{ ok: boolean }>("/health"),
+    getJson<ApiWorkOrder[]>("/work-orders"),
+    getJson<ApiEvidence[]>("/evidence"),
+    getJson<typeof systems>("/systems"),
+    getJson<ApiReplay>("/replay"),
+    getJson<ApiApproval[]>("/approvals"),
+    getJson<ApiAdapters>("/adapters"),
+  ]);
+
+  const allFailed = [health, apiWork, apiEvidence, apiSystems, apiReplay, apiApprovals, apiAdapters].every(
+    (result) => result.status === "rejected",
+  );
+  if (allFailed) {
+    return {
+      apiHealth: "degraded",
+      workItems,
+      evidenceBundles,
+      systems,
+      toolAssets,
+      replayEvents,
+      approvalRequests,
+      loadedAt: "fixture",
+      usingFixtures: true,
+    };
+  }
+
+  const liveWork = apiWork.status === "fulfilled" ? apiWork.value.map(mapWorkOrder) : workItems;
+  const liveEvidence = apiEvidence.status === "fulfilled" ? apiEvidence.value.map(mapEvidence) : evidenceBundles;
+  const liveSystems = apiSystems.status === "fulfilled" ? apiSystems.value : systems;
+  const liveReplay = apiReplay.status === "fulfilled" ? mapReplay(apiReplay.value) : replayEvents;
+  const liveApprovals = apiApprovals.status === "fulfilled" ? apiApprovals.value.map(mapApproval) : approvalRequests;
+  const liveTools = apiAdapters.status === "fulfilled" ? mapAdapters(apiAdapters.value) : toolAssets;
+  const partialFailure = [health, apiWork, apiEvidence, apiSystems, apiReplay, apiApprovals, apiAdapters].some(
+    (result) => result.status === "rejected",
+  );
+
+  return {
+    apiHealth: partialFailure || health.status !== "fulfilled" || !health.value.ok ? "watch" : "nominal",
+    workItems: liveWork,
+    evidenceBundles: liveEvidence,
+    systems: liveSystems,
+    toolAssets: liveTools,
+    replayEvents: liveReplay,
+    approvalRequests: liveApprovals,
+    loadedAt: new Date().toISOString().slice(11, 19) + "Z",
+    usingFixtures: partialFailure,
+  };
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`);
+  if (!response.ok) {
+    throw new Error(`JMCP API ${path} returned ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+function mapWorkOrder(workOrder: ApiWorkOrder) {
+  const owner = workOrder.subject.split("/")[1] ?? "jmcp";
+  return {
+    id: workOrder.id,
+    title: workOrder.task.kind,
+    owner,
+    state: workOrder.status.toLowerCase(),
+    risk: workOrder.status === "Failed" ? "high" as Risk : "low" as Risk,
+    lease: "lease required",
+    updated: formatAge(workOrder.updated_at),
+    evidence: workOrder.evidence.length,
+  };
+}
+
+function mapEvidence(evidence: ApiEvidence) {
+  return {
+    id: evidence.uri.slice(0, 12),
+    subject: evidence.kind,
+    source: "jmcpd",
+    status: "accepted" as const,
+    hash: evidence.uri,
+    age: formatAge(evidence.captured_at),
+  };
+}
+
+function mapReplay(replay: ApiReplay) {
+  if (replay.events === 0 && replay.checkpoints.length === 0) {
+    return [];
+  }
+  const checkpoints = replay.checkpoints.length > 0 ? replay.checkpoints : [{
+    id: "live-events",
+    last_event_id: replay.events,
+    created_at: new Date().toISOString(),
+  }];
+  return checkpoints.map((checkpoint) => ({
+    sequence: checkpoint.last_event_id,
+    subject: checkpoint.id,
+    family: "ReplayCheckpoint",
+    timestamp: new Date(checkpoint.created_at).toISOString().slice(11, 19) + "Z",
+    producer: "jmcpd",
+  }));
+}
+
+function mapApproval(approval: ApiApproval) {
+  return {
+    id: approval.work_order_id,
+    decision: approval.decision ?? `Awaiting ${approval.approver}`,
+    reason: "JMCP approval gate",
+    risk: "medium" as Risk,
+    expires: formatUntil(approval.expires_at),
+  };
+}
+
+function mapAdapters(adapters: ApiAdapters): ToolAsset[] {
+  const healthByName = new Map(adapters.health.map((item) => [item.name, item]));
+  return adapters.service_cards.flatMap((card) => {
+    const health = healthByName.get(card.name);
+    return card.capabilities.map((capability) => ({
+      name: `${card.name}.${capability}`,
+      className: card.subjects.join(", "),
+      conformance: card.name === "jmcpd" ? "C2 native" : "C1 governed",
+      sideEffects: capability.includes("health") || capability.includes("status") ? "none" : "lease gated",
+      dataClasses: [card.name, capability],
+      repo: card.name === "jmcpd" ? "JMCP" : titleCase(card.name),
+      provider: card.name,
+      health: health?.health ?? "degraded",
+      dependsOn: card.name === "jeryu" ? ["jmcpd.work-orders", "jankurai.proof"] : ["jmcpd.leases"],
+      queue: health?.health === "nominal" ? 0 : 1,
+    }));
+  });
+}
+
+function titleCase(value: string) {
+  return value.slice(0, 1).toUpperCase() + value.slice(1);
+}
+
+function formatAge(value: string) {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) {
+    return "live";
+  }
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  return `${Math.round(seconds / 60)}m ago`;
+}
+
+function formatUntil(value: string) {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) {
+    return "unknown";
+  }
+  const seconds = Math.round((time - Date.now()) / 1000);
+  if (seconds <= 0) {
+    return "expired";
+  }
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  return `${Math.round(seconds / 60)}m`;
+}

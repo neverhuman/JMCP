@@ -8,9 +8,11 @@ use ratatui::{
 use serde_json::Value;
 use std::io;
 
+const DEFAULT_API_URL: &str = "http://127.0.0.1:18877";
+
 #[derive(Debug, Parser)]
 struct Args {
-    #[arg(long, default_value = "http://127.0.0.1:8787")]
+    #[arg(long, env = "JMCP_API_URL", default_value = DEFAULT_API_URL)]
     server: String,
     #[arg(long)]
     once: bool,
@@ -19,10 +21,14 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let value: Value = reqwest::get(format!("{}/work-orders", args.server))
-        .await?
-        .json()
-        .await?;
+    let client = reqwest::Client::new();
+    let value = serde_json::json!({
+        "systems": get_json(&client, &args.server, "/systems").await?,
+        "work_orders": get_json(&client, &args.server, "/work-orders").await?,
+        "approvals": get_json(&client, &args.server, "/approvals").await?,
+        "evidence": get_json(&client, &args.server, "/evidence").await?,
+        "replay": get_json(&client, &args.server, "/replay").await?,
+    });
     if args.once {
         println!("{}", serde_json::to_string_pretty(&value)?);
         return Ok(());
@@ -41,4 +47,13 @@ async fn main() -> Result<()> {
         );
     })?;
     Ok(())
+}
+
+async fn get_json(client: &reqwest::Client, server: &str, path: &str) -> Result<Value> {
+    Ok(client
+        .get(format!("{server}{path}"))
+        .send()
+        .await?
+        .json()
+        .await?)
 }

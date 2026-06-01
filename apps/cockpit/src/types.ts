@@ -51,6 +51,11 @@ export interface ToolAsset {
   conformance: string;
   sideEffects: string;
   dataClasses: string[];
+  repo?: string;
+  provider?: string;
+  health?: Health;
+  dependsOn?: string[];
+  queue?: number;
 }
 
 export interface MemoryProposal {

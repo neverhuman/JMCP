@@ -3,7 +3,7 @@ use jmcp_adapter_sdk::Adapter;
 
 #[tokio::main]
 async fn main() {
-    let adapter = JankuraiAdapter;
+    let adapter = JankuraiAdapter::default();
     println!(
         "{}",
         serde_json::to_string(&adapter.service_card()).expect("service card json")

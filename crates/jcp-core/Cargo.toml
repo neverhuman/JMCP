@@ -6,6 +6,8 @@ version.workspace = true
 
 [dependencies]
 chrono.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
 hex.workspace = true
 schemars.workspace = true
 serde.workspace = true

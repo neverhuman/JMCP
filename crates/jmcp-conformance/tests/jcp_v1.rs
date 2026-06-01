@@ -3,8 +3,9 @@ use jmcp_conformance::fixture_envelope;
 #[test]
 fn fixture_is_valid_jcp_v1() {
     let envelope = fixture_envelope();
+    let signer = jcp_core::LocalSigner::load_or_create_default().unwrap();
     envelope.validate().unwrap();
-    envelope.verify_signature_stub().unwrap();
+    envelope.verify_local_signature(&signer).unwrap();
 }
 
 #[test]

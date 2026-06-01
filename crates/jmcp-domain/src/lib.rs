@@ -13,6 +13,10 @@ pub enum DomainError {
     },
     #[error("lease expired")]
     LeaseExpired,
+    #[error("lease does not match work order")]
+    LeaseWrongWorkOrder,
+    #[error("lease holder mismatch")]
+    LeaseHolderMismatch,
     #[error("approval expired")]
     ApprovalExpired,
     #[error("wrong approver")]
@@ -55,6 +59,21 @@ pub struct Lease {
     pub expires_at: DateTime<Utc>,
 }
 
+impl Lease {
+    pub fn validate_for(&self, work_order_id: Uuid, holder: &str) -> Result<(), DomainError> {
+        if self.work_order_id != work_order_id {
+            return Err(DomainError::LeaseWrongWorkOrder);
+        }
+        if self.holder != holder {
+            return Err(DomainError::LeaseHolderMismatch);
+        }
+        if self.expires_at < Utc::now() {
+            return Err(DomainError::LeaseExpired);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Approval {
     pub work_order_id: Uuid,
@@ -95,6 +114,62 @@ pub struct ServiceCard {
     pub version: String,
     pub subjects: Vec<String>,
     pub capabilities: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HealthLevel {
+    Nominal,
+    Watch,
+    Degraded,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SystemStatus {
+    pub name: String,
+    pub role: String,
+    pub health: HealthLevel,
+    pub jcp: String,
+    pub latency: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AdapterHealth {
+    pub name: String,
+    pub health: HealthLevel,
+    pub endpoint: Option<String>,
+    pub detail: String,
+    pub checked_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectStatus {
+    Pending,
+    Applied,
+    Failed,
+    Replayed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EffectLedgerEntry {
+    pub id: Uuid,
+    pub work_order_id: Uuid,
+    pub lease_holder: String,
+    pub effect_kind: String,
+    pub status: EffectStatus,
+    pub evidence_uri: Option<String>,
+    pub recorded_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReplayCheckpoint {
+    pub id: Uuid,
+    pub last_event_id: i64,
+    pub rebuilt_work_orders: usize,
+    pub side_effects_reissued: bool,
+    pub created_at: DateTime<Utc>,
 }
 
 impl WorkOrder {
@@ -156,6 +231,9 @@ impl WorkOrder {
         approver: &str,
         decision: ApprovalDecision,
     ) -> Result<(), DomainError> {
+        if approval.work_order_id != self.id {
+            return Err(DomainError::LeaseWrongWorkOrder);
+        }
         if approval.expires_at < Utc::now() {
             return Err(DomainError::ApprovalExpired);
         }
@@ -232,5 +310,25 @@ mod tests {
         assert!(wo.complete().is_err());
         wo.lease("worker", Duration::minutes(1)).unwrap();
         wo.complete().unwrap();
+    }
+
+    #[test]
+    fn approval_must_match_work_order() {
+        let mut first = WorkOrder::submit("t/s/one", "demo", json!({}));
+        first
+            .require_approval("user", Duration::minutes(5))
+            .unwrap();
+        let second = WorkOrder::submit("t/s/two", "demo", json!({}));
+        let mut approval = Approval {
+            work_order_id: second.id,
+            approver: "user".to_owned(),
+            expires_at: Utc::now() + Duration::minutes(5),
+            decision: None,
+        };
+
+        assert_eq!(
+            first.apply_approval(&mut approval, "user", ApprovalDecision::Approved),
+            Err(DomainError::LeaseWrongWorkOrder)
+        );
     }
 }

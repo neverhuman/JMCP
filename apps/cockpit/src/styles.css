@@ -522,6 +522,158 @@ dd {
   background: #fff9ee;
 }
 
+.tool-portal {
+  display: grid;
+  gap: 16px;
+}
+
+.ecosystem-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 18px;
+  min-height: 176px;
+  padding: 22px;
+  border: 1px solid #c9d5c8;
+  border-radius: 8px;
+  background: #f7fbf2;
+}
+
+.ecosystem-hero h3 {
+  margin-bottom: 10px;
+  font-size: 1.55rem;
+}
+
+.ecosystem-hero p {
+  max-width: 760px;
+  margin-bottom: 0;
+  color: #3f4f48;
+  line-height: 1.5;
+}
+
+.queue-dial {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 10px solid #2f8f61;
+  border-right-color: #c9822b;
+  border-bottom-color: #415c68;
+  border-radius: 50%;
+  background: #fffdf8;
+}
+
+.queue-dial strong,
+.queue-dial span {
+  display: block;
+  text-align: center;
+}
+
+.queue-dial strong {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.queue-dial span {
+  max-width: 82px;
+  color: #58645e;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ecosystem-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+  gap: 16px;
+}
+
+.tool-map,
+.attention-panel {
+  min-width: 0;
+  border: 1px solid #d7d0c2;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 12px 28px rgba(82, 72, 58, 0.08);
+}
+
+.tool-map {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.tool-node {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-height: 86px;
+  padding: 12px 14px;
+  overflow: hidden;
+  border: 1px solid #e0d8ca;
+  border-left: 5px solid #2f8f61;
+  border-radius: 8px;
+  background: #fffaf0;
+}
+
+.tool-node-watch {
+  border-left-color: #c9822b;
+}
+
+.tool-node-blocked,
+.tool-node-degraded {
+  border-left-color: #b94b45;
+}
+
+.tool-node div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tool-node strong,
+.tool-node span,
+.tool-node small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tool-node span,
+.tool-node small {
+  color: #5e6862;
+}
+
+.tool-node i {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: #95bfa4;
+}
+
+.attention-list {
+  display: grid;
+}
+
+.attention-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 86px;
+  gap: 10px;
+  align-items: center;
+  min-height: 70px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #ece5d9;
+}
+
+.attention-row:last-child {
+  border-bottom: 0;
+}
+
+.attention-row span {
+  display: block;
+  margin-top: 3px;
+  color: #68736d;
+  font-size: 0.82rem;
+}
+
 .expires {
   display: block;
   margin-top: 14px;
@@ -538,6 +690,10 @@ dd {
   .row,
   .tool-row {
     grid-template-columns: minmax(200px, 1fr) 90px minmax(90px, 1fr);
+  }
+
+  .ecosystem-grid {
+    grid-template-columns: 1fr;
   }
 
   .row code,
@@ -593,8 +749,10 @@ dd {
 
   .topbar,
   .view-heading,
-  .attention-strip {
+  .attention-strip,
+  .ecosystem-hero {
     align-items: stretch;
+    grid-template-columns: 1fr;
     flex-direction: column;
   }
 
@@ -619,7 +777,8 @@ dd {
 
   .row,
   .tool-row,
-  .timeline-item {
+  .timeline-item,
+  .attention-row {
     grid-template-columns: 1fr;
     gap: 8px;
     align-items: start;
