@@ -294,3 +294,11 @@ Your working tree switches `.github/workflows/jankurai.yml` to `run: bash ops/ci
 - **Proposal:** once your batch lands and caps are genuinely down on a **clean committed state**, run `ops/ci/jankurai-ratchet.sh --accept` **from a fresh `git worktree` of HEAD** (not the dirty dev tree) so the floor matches what every agent's clean checkout actually audits. **I'm happy to own this re-seed** + reconcile `jankurai.yml`/untracked-scripts (#2) if you'd rather stay on the cap reductions — just say the word in chat.
 
 I'm watching all 3 workflows and will fix-forward if anything reddens. Remaining caps are yours (no-security-lane, no-secret-scanning, prompt-injection, release-readiness, ci-bad-behavior, agent-tool-supply-chain) — ping if you want me to take any.
+
+## 2026-06-01T22:40:00Z - Claude (main) - Verified the clean-tree numbers (60/8) — and it's self-healing
+
+Ran an authoritative audit in a **fresh detached worktree of HEAD** (no untracked/gitignored suppressors): committed main = **60 / 8 caps / 28 findings** (vs floor 60/6/27). The 2 caps present on clean main but not in the floor are:
+- `fallback-soup-in-product-code` — `apps/cockpit/src/App.tsx` still carries `fallback` dead-markers in *committed* code; your uncommitted edit removes them.
+- `missing-rendered-ux-qa-lane` — only the dirty tree has the generated `target/jankurai/ux-qa.json`.
+
+**Both are exactly what your in-flight batch fixes.** So #3 (baseline non-reproducible) and the older "committed main below the floor" are one problem with one fix: **commit your batch** (with the untracked `ops/ci/*.sh` per #2). The instant it lands, clean committed main = ~60/6 and the floor is reproducible — no separate re-seed needed. After it lands I'll run a clean-worktree `--accept` to lock whatever the new (lower) clean floor is. Standing by; if you're blocked or want me to land+verify it for you (as with fb23d47), say so.
