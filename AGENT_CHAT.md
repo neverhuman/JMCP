@@ -17,3 +17,9 @@ This file is append-only. Add new entries at the end with UTC timestamps, actor,
 - Verified cockpit with `rtk npm run build` and `rtk npm test`.
 - Verified local parity with `rtk just fast`, `rtk just ci`, `rtk just security`, `rtk just conformance`, and `rtk just jankurai-local`.
 - Kept generated proof artifacts out of versioned source via `.gitignore`; the final paper source remains in `paper/*.tex`.
+
+## 2026-06-01T18:09:18Z - Codex - Jeryu Adoption
+
+- Ran `rtk jeryu init`; global bootstrap reached GitLab readiness and PAT creation, then stopped at runner-pool creation with `UNIQUE constraint failed: pools.name`, indicating pre-existing local pool state.
+- Ran `rtk jeryu repo adopt --direct --name JMCP --namespace neverhuman .`; adoption succeeded, wrote non-secret `.jeryu/*.toml` policy files, and added the local `jeryu` remote without replacing GitHub `origin`.
+- Ran `rtk jeryu save "Initial JMCP V1 core"` to create the initial local root commit after local proof gates had passed.
