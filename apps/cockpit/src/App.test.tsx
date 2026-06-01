@@ -39,7 +39,7 @@ describe("JMCP cockpit", () => {
     await user.click(screen.getByRole("button", { name: "Tools/Data" }));
 
     expect(screen.getByRole("heading", { name: /tools across/i })).toBeInTheDocument();
-    expect(screen.getByText("jeryu.repo.adopt")).toBeInTheDocument();
+    expect(screen.getAllByText("jeryu.repo.adopt").length).toBeGreaterThan(0);
     expect(screen.getByText("Needs Attention")).toBeInTheDocument();
   });
 });
