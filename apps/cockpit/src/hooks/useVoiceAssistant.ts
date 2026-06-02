@@ -37,7 +37,8 @@ export interface VoiceAssistantApi {
 
 const WAKE_WORDS = ["hey jmcp", "hey jim cp", "jmcp", "computer"];
 const RMS_THRESHOLD = 0.018; // speech vs silence
-const SILENCE_MS = 550; // trailing silence that ends an utterance
+const SILENCE_MS = 400; // trailing silence that ends an utterance (snappy turn-taking)
+const FIRST_CHUNK_CHARS = 40; // flush the opening phrase fast for low time-to-first-word
 const MIN_SPEECH_MS = 250; // ignore blips
 const SYSTEM_PROMPT =
   "You are JMCP, a concise local voice assistant running on the operator's own machine. " +
@@ -141,20 +142,38 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     historyRef.current.push({ role: "user", content: command });
     speechQueueRef.current = [];
     let pending = "";
-    const flushSentences = () => {
-      const sentences = pending.match(/[^.!?:;]*[.!?:;]+\s*/g);
-      if (sentences === null) return;
-      let consumed = 0;
-      for (const sentence of sentences) {
-        enqueueSpeech(sentence);
-        consumed += sentence.length;
+    let firstChunk = true;
+    // Speak in clause-sized chunks (split on , . ! ? : ;) so the opening phrase
+    // is voiced the instant it streams in — minimal time-to-first-word. When a
+    // clause runs long with no punctuation, break at the last word boundary.
+    const flushChunks = (force: boolean) => {
+      const chunks = pending.match(/[^,.!?:;]*[,.!?:;]+\s*/g);
+      if (chunks !== null) {
+        let consumed = 0;
+        for (const chunk of chunks) {
+          enqueueSpeech(chunk);
+          consumed += chunk.length;
+        }
+        pending = pending.slice(consumed);
+        firstChunk = false;
       }
-      pending = pending.slice(consumed);
+      if (force) {
+        const lastSpace = pending.lastIndexOf(" ");
+        if (lastSpace > 12) {
+          enqueueSpeech(pending.slice(0, lastSpace));
+          pending = pending.slice(lastSpace + 1);
+          firstChunk = false;
+        }
+      }
     };
     try {
       const answer = await reasonStream(historyRef.current, (delta) => {
         pending += delta;
-        if (/[.!?:;]\s/.test(pending) || pending.length > 160) flushSentences();
+        if (/[,.!?:;]\s/.test(pending)) {
+          flushChunks(false);
+        } else if (pending.length > (firstChunk ? FIRST_CHUNK_CHARS : 120)) {
+          flushChunks(true);
+        }
       });
       enqueueSpeech(pending);
       pending = "";
