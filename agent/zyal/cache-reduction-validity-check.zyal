@@ -1,0 +1,54 @@
+<<<ZYAL v1:daemon id=cache-reduction-validity-check>>>
+{
+  "version": "v1",
+  "intent": "daemon",
+  "confirm": "RUN_FOREVER",
+  "id": "cache-reduction-validity-check",
+  "job": {
+    "name": "Cache Reduction Validity Check",
+    "objective": "Verify cache-reduction safety claims with bounded local evidence and report any correctness risks before cache behavior is changed.",
+    "risk": "bounded evidence-only local review"
+  },
+  "stop": {
+    "all": [
+      {
+        "git_clean": {
+          "allow_untracked": false
+        }
+      }
+    ]
+  },
+  "permissions": {
+    "read": "allow",
+    "list": "allow",
+    "grep": "allow",
+    "shell": "allow",
+    "edit": "deny",
+    "git_push": "deny",
+    "mcp": "allow"
+  },
+  "constraints": {
+    "name": "bounded validity check",
+    "invariant": [
+      "live=false",
+      "verify cache safety before mutation",
+      "produce counterexamples when found"
+    ],
+    "on_violation": "stop"
+  },
+  "evidence": {
+    "require_before_promote": true,
+    "bundle_format": "json",
+    "sign": false,
+    "archive": "local"
+  },
+  "budgets": {
+    "run": {
+      "max_stages": 4,
+      "time_budget_hours": 0.5,
+      "per_phase_timeout_secs": 600
+    }
+  }
+}
+<<<END_ZYAL id=cache-reduction-validity-check>>>
+ZYAL_ARM RUN_FOREVER id=cache-reduction-validity-check

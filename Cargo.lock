@@ -1150,6 +1150,7 @@ dependencies = [
  "jmcp-adapter-jeryu",
  "jmcp-app",
  "jmcp-domain",
+ "jmcp-store",
  "serde",
  "serde_json",
  "tokio",

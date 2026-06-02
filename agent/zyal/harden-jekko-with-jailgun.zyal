@@ -1,0 +1,54 @@
+<<<ZYAL v1:daemon id=harden-jekko-with-jailgun>>>
+{
+  "version": "v1",
+  "intent": "daemon",
+  "confirm": "RUN_FOREVER",
+  "id": "harden-jekko-with-jailgun",
+  "job": {
+    "name": "Harden Jekko With Jailgun",
+    "objective": "Inspect Jekko execution hardening using Jailgun evidence boundaries and produce bounded recommendations without pushing, merging, deploying, or changing external durable state.",
+    "risk": "bounded evidence-only local review"
+  },
+  "stop": {
+    "all": [
+      {
+        "git_clean": {
+          "allow_untracked": false
+        }
+      }
+    ]
+  },
+  "permissions": {
+    "read": "allow",
+    "list": "allow",
+    "grep": "allow",
+    "shell": "allow",
+    "edit": "deny",
+    "git_push": "deny",
+    "mcp": "allow"
+  },
+  "constraints": {
+    "name": "bounded hardening review",
+    "invariant": [
+      "live=false",
+      "inspect Jailgun evidence boundaries",
+      "avoid external durable mutation"
+    ],
+    "on_violation": "stop"
+  },
+  "evidence": {
+    "require_before_promote": true,
+    "bundle_format": "json",
+    "sign": false,
+    "archive": "local"
+  },
+  "budgets": {
+    "run": {
+      "max_stages": 4,
+      "time_budget_hours": 0.5,
+      "per_phase_timeout_secs": 600
+    }
+  }
+}
+<<<END_ZYAL id=harden-jekko-with-jailgun>>>
+ZYAL_ARM RUN_FOREVER id=harden-jekko-with-jailgun

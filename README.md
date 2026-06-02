@@ -98,6 +98,20 @@ The Jekko ZYAL runner in `jmcp-adapter-jekko` submits only to
 behind `jmcp-adapter-jailgun`, where `run-agent` uses HTTP and
 `review-packet` remains the bounded CLI compatibility path.
 
+## Autonomous Actions
+
+JMCP exposes a small full-auto catalog for bounded, evidence-oriented ZYAL work
+orders:
+
+- `GET /autonomous-actions`
+- `POST /autonomous-actions/:id/submit`
+
+The initial actions are committed under `agent/zyal/*.zyal` and submit
+`zyal.run` work orders through the normal signed JCP envelope path with
+`live=false`, fixed stage/time caps, and `submitted_by: "jmcp.full_auto"`
+metadata. They do not bypass leases, evidence recording, replay, approvals, or
+adapter health tracking.
+
 ## Telegram
 
 Keep Telegram secrets in `telegram.env`; do not commit or print the bot token.

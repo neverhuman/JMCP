@@ -41,6 +41,15 @@ input is read and submitted as the same JSON body. Jailgun run requests,
 review-packet requests, summaries, and review packets must carry `version: 1`;
 unsupported or missing versions fail before JMCP accepts the evidence.
 
+## Autonomous Action Boundary
+
+`GET /autonomous-actions` exposes the committed full-auto ZYAL catalog, and
+`POST /autonomous-actions/:id/submit` self-submits a signed local JCP envelope
+through the same `submit_envelope` path used by external clients. Initial
+actions default to `live=false`, bounded stage/time limits, evidence-oriented
+metadata, and `submitted_by: "jmcp.full_auto"`. Live execution or broader
+mutation requires a separate approval policy instead of an override.
+
 ## Replay Safety
 
 Replay must not duplicate committed side effects. Side effects need idempotency keys, approval references, or replay guards. During replay, JMCP should reconstruct state from stored facts and mark side-effect execution as skipped, simulated, or already committed.

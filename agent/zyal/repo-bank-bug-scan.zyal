@@ -1,0 +1,54 @@
+<<<ZYAL v1:daemon id=repo-bank-bug-scan>>>
+{
+  "version": "v1",
+  "intent": "daemon",
+  "confirm": "RUN_FOREVER",
+  "id": "repo-bank-bug-scan",
+  "job": {
+    "name": "Repo Bank Bug Scan",
+    "objective": "Inspect JMCP plus the ZYAL, Jekko, and jnoccio-router execution paths for likely bugs and produce evidence-first findings without mutating external durable state.",
+    "risk": "bounded evidence-only local review"
+  },
+  "stop": {
+    "all": [
+      {
+        "git_clean": {
+          "allow_untracked": false
+        }
+      }
+    ]
+  },
+  "permissions": {
+    "read": "allow",
+    "list": "allow",
+    "grep": "allow",
+    "shell": "allow",
+    "edit": "deny",
+    "git_push": "deny",
+    "mcp": "allow"
+  },
+  "constraints": {
+    "name": "bounded evidence run",
+    "invariant": [
+      "live=false",
+      "no external durable mutation",
+      "produce evidence before recommendations"
+    ],
+    "on_violation": "stop"
+  },
+  "evidence": {
+    "require_before_promote": true,
+    "bundle_format": "json",
+    "sign": false,
+    "archive": "local"
+  },
+  "budgets": {
+    "run": {
+      "max_stages": 4,
+      "time_budget_hours": 0.5,
+      "per_phase_timeout_secs": 600
+    }
+  }
+}
+<<<END_ZYAL id=repo-bank-bug-scan>>>
+ZYAL_ARM RUN_FOREVER id=repo-bank-bug-scan

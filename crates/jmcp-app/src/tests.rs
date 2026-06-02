@@ -1,10 +1,15 @@
 use super::*;
 use chrono::Duration as ChronoDuration;
 use jcp_core::Subject;
-use jmcp_domain::{ApprovalChallengeState, ApprovalDecision, HealthLevel, WorkOrderStatus};
+use jmcp_domain::{
+    ApprovalChallengeState, ApprovalDecision, AutonomousActionOverrides, HealthLevel,
+    WorkOrderStatus,
+};
 use serde_json::json;
 use std::{
+    fs,
     net::TcpListener,
+    path::PathBuf,
     str::FromStr,
     sync::{Mutex, MutexGuard},
 };
@@ -222,6 +227,83 @@ fn runtime_health_reports_jailgun_config_states() {
 }
 
 #[test]
+fn autonomous_actions_list_three_bounded_zyal_actions() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+
+    let actions = state.list_autonomous_actions().unwrap();
+
+    assert_eq!(actions.len(), 3);
+    assert_eq!(actions[0].id, "repo-bank-bug-scan");
+    assert!(actions.iter().all(|action| action.safety.evidence_oriented));
+    assert!(actions.iter().all(|action| !action.safety.live));
+    assert!(actions
+        .iter()
+        .all(|action| action.work_order_kind.0 == "zyal.run"));
+}
+
+#[test]
+fn autonomous_action_submission_uses_signed_zyal_work_order_path() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+
+    let work_order = state
+        .submit_autonomous_action(
+            "cache-reduction-validity-check",
+            AutonomousActionOverrides::default(),
+        )
+        .unwrap();
+
+    assert_eq!(work_order.status, WorkOrderStatus::Submitted);
+    assert_eq!(
+        work_order.subject,
+        "jmcp/zyal/cache-reduction-validity-check"
+    );
+    assert_eq!(work_order.task.kind, "zyal.run");
+    assert_eq!(
+        work_order.task.payload["metadata"]["submitted_by"],
+        "jmcp.full_auto"
+    );
+    assert_eq!(work_order.task.payload["live"], false);
+    assert!(state.list_approval_challenges().unwrap().is_empty());
+    assert_eq!(state.list_work_orders().unwrap().len(), 1);
+}
+
+#[test]
+fn autonomous_action_rejects_live_override() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+    let overrides = AutonomousActionOverrides {
+        live: Some(true),
+        ..AutonomousActionOverrides::default()
+    };
+
+    let error = state
+        .submit_autonomous_action("repo-bank-bug-scan", overrides)
+        .unwrap_err();
+
+    assert!(error.to_string().contains("approval policy"));
+}
+
+#[test]
+fn zyal_manifest_directory_contains_parseable_zyal_files_only() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../agent/zyal");
+    let entries = fs::read_dir(&dir).unwrap();
+    let mut count = 0;
+
+    for entry in entries {
+        let path = entry.unwrap().path();
+        assert_eq!(path.extension().and_then(|ext| ext.to_str()), Some("zyal"));
+        let text = fs::read_to_string(&path).unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(zyal_body(&text)).unwrap();
+        assert!(manifest
+            .get("id")
+            .and_then(|value| value.as_str())
+            .is_some());
+        count += 1;
+    }
+
+    assert_eq!(count, 3);
+}
+
+#[test]
 fn voice_sessions_fall_back_to_samples_and_persist_intake() {
     let state = AppState::new(SqliteStore::in_memory().unwrap());
     assert!(!state.voice_sessions().unwrap().is_empty());
@@ -237,4 +319,10 @@ fn clear_jailgun_env() {
     std::env::remove_var("JMCP_JAILGUN_URL");
     std::env::remove_var("JMCP_JAILGUN_TOKEN");
     std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
+}
+
+fn zyal_body(source: &str) -> &str {
+    let start = source.find(">>>\n").unwrap() + ">>>\n".len();
+    let end = source.find("\n<<<END_ZYAL ").unwrap();
+    &source[start..end]
 }

@@ -2,6 +2,7 @@
 mod tests;
 
 mod approval_flow;
+mod autonomous_actions;
 mod control_plane;
 mod control_plane_samples;
 mod runtime_health;
