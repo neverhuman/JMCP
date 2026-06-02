@@ -73,16 +73,22 @@ pub struct CliZyalRunner {
 impl CliZyalRunner {
     /// Build from `JEKKO_BIN` (default `jekko`).
     pub fn from_env() -> Self {
-        let bin = std::env::var("JEKKO_BIN")
-            .ok()
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| DEFAULT_JEKKO_BIN.to_owned());
+        let bin = jekko_bin_from_env();
         Self { bin }
     }
 
     /// Build with an explicit binary path (used by tests with a stub).
     pub fn with_bin(bin: impl Into<String>) -> Self {
         Self { bin: bin.into() }
+    }
+}
+
+fn jekko_bin_from_env() -> String {
+    match std::env::var("JEKKO_BIN") {
+        Ok(value) if !value.trim().is_empty() => value,
+        Ok(_) => DEFAULT_JEKKO_BIN.to_owned(),
+        Err(std::env::VarError::NotPresent) => DEFAULT_JEKKO_BIN.to_owned(),
+        Err(std::env::VarError::NotUnicode(_)) => DEFAULT_JEKKO_BIN.to_owned(),
     }
 }
 

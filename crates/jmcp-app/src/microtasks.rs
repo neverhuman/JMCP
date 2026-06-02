@@ -10,6 +10,12 @@ use serde_json::{json, Map, Value};
 
 use crate::{autonomous_actions::validate_autonomous_action_id, AppError, AppResult, AppState};
 
+mod input_selection;
+
+use input_selection::{
+    default_model_roots, microtask_concept, microtask_model_roots, microtask_repo, optional_label,
+};
+
 pub(crate) const MICROTASK_COUNT: u32 = MICROTASKS.len() as u32;
 
 const SUBMITTED_BY: &str = "jmcp.microtask_planner";
@@ -289,10 +295,7 @@ fn input_defaults(definition: &MicrotaskDefinition) -> MicrotaskInputDefaults {
     MicrotaskInputDefaults {
         repo: definition.accepts_repo.then(|| ".".to_owned()),
         concept: definition.default_concept.map(str::to_owned),
-        model_roots: definition
-            .accepts_model_root
-            .then(local_model_roots)
-            .unwrap_or_default(),
+        model_roots: default_model_roots(definition),
     }
 }
 
@@ -343,28 +346,21 @@ fn microtask_payload(
         "allowExternalDurableMutation",
     )?;
 
-    let max_stages = bounded_u32(overrides.max_stages, definition.max_stages, "maxStages")?
-        .unwrap_or(definition.max_stages);
-    let timeout_secs = bounded_u64(
+    let max_stages = match bounded_u32(overrides.max_stages, definition.max_stages, "maxStages")? {
+        Some(value) => value,
+        None => definition.max_stages,
+    };
+    let timeout_secs = match bounded_u64(
         overrides.timeout_secs,
         definition.timeout_secs,
         "timeoutSecs",
-    )?
-    .unwrap_or(definition.timeout_secs);
-    let repo = overrides
-        .repo
-        .or_else(|| definition.accepts_repo.then(|| ".".to_owned()));
-    let concept = overrides
-        .concept
-        .or_else(|| definition.default_concept.map(str::to_owned));
-    let model_roots = if definition.accepts_model_root {
-        overrides
-            .model_root
-            .map(|root| vec![root])
-            .unwrap_or_else(local_model_roots)
-    } else {
-        Vec::new()
+    )? {
+        Some(value) => value,
+        None => definition.timeout_secs,
     };
+    let repo = microtask_repo(definition, overrides.repo);
+    let concept = microtask_concept(definition, overrides.concept);
+    let model_roots = microtask_model_roots(definition, overrides.model_root);
 
     let mut inputs = Map::new();
     if let Some(repo) = &repo {
@@ -398,12 +394,11 @@ fn microtask_payload(
         }
     });
 
-    if let Some(run_id) = overrides
-        .run_id
-        .or_else(|| Some(format!("jmcp-microtask-{}", definition.id)))
-    {
-        payload["run_id"] = json!(run_id);
-    }
+    let run_id = match overrides.run_id {
+        Some(run_id) => run_id,
+        None => format!("jmcp-microtask-{}", definition.id),
+    };
+    payload["run_id"] = json!(run_id);
     if let Some(repo) = repo {
         payload["cwd"] = json!(repo);
     }
@@ -422,23 +417,23 @@ fn prompt_for(
     match definition.id {
         "jankurai.repo-refresh-audit" => format!(
             "Run a bounded local Jankurai proof audit for {}. Record only evidence digests.",
-            repo.unwrap_or(".")
+            optional_label(repo, ".")
         ),
         "jankurai.changed-path-audit" => format!(
             "Run a bounded local Jankurai changed-path audit for {}. Record only evidence digests.",
-            repo.unwrap_or(".")
+            optional_label(repo, ".")
         ),
         "research.concept-scan" => format!(
             "Produce an evidence-only concept scan for `{}`. Do not access the network, install tools, mutate durable state, or decide approvals.",
-            concept.unwrap_or("JMCP")
+            optional_label(concept, "JMCP")
         ),
         "router.tool-build-probe" => format!(
             "Probe local router tool-building readiness for {}. Do not install tools, call external endpoints, or mutate durable state.",
-            repo.unwrap_or(".")
+            optional_label(repo, ".")
         ),
         "router.open-model-reasoning-survey" => format!(
             "Survey open reasoning model candidates for `{}` as bounded evidence. Do not download models or use GPU.",
-            concept.unwrap_or("JMCP local reasoning")
+            optional_label(concept, "JMCP local reasoning")
         ),
         "local-model.inventory-20b-30b" => format!(
             "Inventory local 20B-30B model readiness under [{}]. Do not load weights, use GPU, install runtimes, or call the network.",

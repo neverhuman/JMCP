@@ -19,10 +19,12 @@ const DEFAULT_ASR_URL: &str = "http://127.0.0.1:18878";
 const DEFAULT_TTS_URL: &str = "http://127.0.0.1:18901";
 
 fn env_url(key: &str, default: &str) -> String {
-    std::env::var(key)
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| default.to_owned())
+    match std::env::var(key) {
+        Ok(value) if !value.trim().is_empty() => value,
+        Ok(_) => default.to_owned(),
+        Err(std::env::VarError::NotPresent) => default.to_owned(),
+        Err(std::env::VarError::NotUnicode(_)) => default.to_owned(),
+    }
 }
 
 /// Health snapshot of the ASR sidecar (`GET /health`).
