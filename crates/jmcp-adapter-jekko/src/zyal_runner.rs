@@ -43,6 +43,28 @@ pub trait ZyalRunner: Send + Sync {
     async fn status(&self, db: Option<&str>, run_id: &str) -> Result<ZyalRunStatus>;
 }
 
+/// Run a prepared command, retrying briefly on `ETXTBSY` ("text file busy").
+///
+/// On Linux, exec'ing a freshly-written executable can transiently fail with
+/// ETXTBSY when another thread in this (multi-threaded) process still holds a
+/// writable fd to it — common in parallel test runs and rapid write-then-exec.
+/// A short bounded retry makes the spawn deterministic without masking real
+/// failures (any other error, or exhausted retries, is returned).
+async fn output_retrying_etxtbsy(
+    cmd: &mut tokio::process::Command,
+) -> std::io::Result<std::process::Output> {
+    let mut attempt = 0u32;
+    loop {
+        match cmd.output().await {
+            Err(err) if err.raw_os_error() == Some(26) && attempt < 10 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Real [`ZyalRunner`] that shells out to the `jekko` binary.
 pub struct CliZyalRunner {
     bin: String,
@@ -94,8 +116,7 @@ impl ZyalRunner for CliZyalRunner {
         if let Some(s) = opts.per_phase_timeout_secs {
             cmd.arg("--per-phase-timeout-secs").arg(s.to_string());
         }
-        let output = cmd
-            .output()
+        let output = output_retrying_etxtbsy(&mut cmd)
             .await
             .with_context(|| format!("spawn `{} port-run --super`", self.bin))?;
         if !output.status.success() {
@@ -119,8 +140,7 @@ impl ZyalRunner for CliZyalRunner {
         if let Some(db) = db {
             cmd.arg("--db").arg(db);
         }
-        let output = cmd
-            .output()
+        let output = output_retrying_etxtbsy(&mut cmd)
             .await
             .with_context(|| format!("spawn `{} port-run --status`", self.bin))?;
         if !output.status.success() {
