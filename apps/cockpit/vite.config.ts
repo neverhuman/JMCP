@@ -24,6 +24,25 @@ export default defineConfig(({ mode }) => {
       host: env.JMCP_COCKPIT_HOST ?? "127.0.0.1",
       port: safePort,
       strictPort: true,
+      // Same-origin proxy to the local on-box voice stack (ASR/TTS/LLM) so the
+      // browser needs no CORS and audio never leaves the machine.
+      proxy: {
+        "/asr": {
+          target: env.VITE_ASR_TARGET ?? "http://127.0.0.1:18878",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/asr/, ""),
+        },
+        "/tts": {
+          target: env.VITE_TTS_TARGET ?? "http://127.0.0.1:18901",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/tts/, ""),
+        },
+        "/llm": {
+          target: env.VITE_LLM_TARGET ?? "http://127.0.0.1:18902",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/llm/, ""),
+        },
+      },
     },
     preview: {
       host: env.JMCP_COCKPIT_HOST ?? "127.0.0.1",
