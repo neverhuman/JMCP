@@ -40,6 +40,42 @@
   border-color: #59d499;
 }
 
+.voice-text {
+  display: flex;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.voice-text input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2b3245);
+  background: var(--surface, #141925);
+  color: var(--text, #e7ecf5);
+  font: inherit;
+}
+
+.voice-text input:focus {
+  outline: none;
+  border-color: var(--accent, #6ea8fe);
+}
+
+.voice-text button {
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent, #6ea8fe);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 16%, var(--surface, #141925));
+  color: var(--text, #e7ecf5);
+  cursor: pointer;
+}
+
+.voice-text button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .voice-log {
   width: 100%;
   padding: 0.6rem 0.8rem;
