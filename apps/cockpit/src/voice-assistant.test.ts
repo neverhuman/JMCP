@@ -4,9 +4,11 @@ import {
   VOICE_MODEL,
   micSupported,
   reason,
+  reasonStream,
   synthesize,
   transcribe,
 } from "./lib/speechClient";
+import { VOICE_TOOL_SPECS, executeVoiceTool } from "./lib/voiceTools";
 
 // A minimal stand-in for the Fetch API Response surface that speechClient reads:
 // `.ok`, `.json()`, and `.blob()`. Each test builds one of these via the helpers
@@ -14,6 +16,7 @@ import {
 interface ResponseLike {
   ok: boolean;
   status: number;
+  body: ReadableStream<Uint8Array> | null;
   json: () => Promise<unknown>;
   blob: () => Promise<Blob>;
 }
@@ -22,6 +25,7 @@ function jsonResponse(value: unknown, ok = true, status = 200): ResponseLike {
   return {
     ok,
     status,
+    body: null,
     json: () => Promise.resolve(value),
     blob: () => Promise.resolve(new Blob()),
   };
@@ -31,8 +35,27 @@ function blobResponse(payload: Blob, ok = true, status = 200): ResponseLike {
   return {
     ok,
     status,
+    body: null,
     json: () => Promise.resolve(null),
     blob: () => Promise.resolve(payload),
+  };
+}
+
+function streamResponse(chunks: string[], ok = true, status = 200): ResponseLike {
+  const encoder = new TextEncoder();
+  return {
+    ok,
+    status,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    }),
+    json: () => Promise.resolve(null),
+    blob: () => Promise.resolve(new Blob()),
   };
 }
 
@@ -81,6 +104,12 @@ describe("stripWakeWord", () => {
     expect(result.triggered).toBe(true);
     expect(result.command).toBe("run the audit");
   });
+
+  it("does not trigger on a wake word embedded inside a larger word", () => {
+    const result = stripWakeWord("please computerize the report");
+    expect(result.triggered).toBe(false);
+    expect(result.command).toBe("");
+  });
 });
 
 describe("transcribe", () => {
@@ -113,6 +142,20 @@ describe("transcribe", () => {
     await transcribe(new Blob(), "es");
     const firstCall = fetchDouble.mock.calls[0];
     expect(firstCall[0]).toContain("language=es");
+  });
+
+  it("uses beam size 1 by default for realtime ASR", async () => {
+    const fetchDouble = installFetch(() => Promise.resolve(jsonResponse({ text: "ready" })));
+    await transcribe(new Blob());
+    const firstCall = fetchDouble.mock.calls[0];
+    expect(firstCall[0]).toContain("beam_size=1");
+  });
+
+  it("lets accuracy runs override the ASR beam size", async () => {
+    const fetchDouble = installFetch(() => Promise.resolve(jsonResponse({ text: "ready" })));
+    await transcribe(new Blob(), "en", 4);
+    const firstCall = fetchDouble.mock.calls[0];
+    expect(firstCall[0]).toContain("beam_size=4");
   });
 
   it("throws when the sidecar response is not ok", async () => {
@@ -150,9 +193,147 @@ describe("reason", () => {
     }
   });
 
+  it("forwards an abort signal to the reasoning endpoint", async () => {
+    const controller = new AbortController();
+    const body = { choices: [{ message: { content: "ok" } }] };
+    const fetchDouble = installFetch(() => Promise.resolve(jsonResponse(body)));
+    await reason([{ role: "user", content: "hi" }], controller.signal);
+    expect(fetchDouble.mock.calls[0][1]?.signal).toBe(controller.signal);
+  });
+
   it("throws when the reasoning endpoint response is not ok", async () => {
     installFetch(() => Promise.resolve(jsonResponse({}, false, 500)));
     await expect(reason([{ role: "user", content: "x" }])).rejects.toThrow("LLM 500");
+  });
+});
+
+describe("reasonStream", () => {
+  function dataLine(delta: string): string {
+    return `data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`;
+  }
+
+  function toolLine(part: Record<string, unknown>): string {
+    return `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [part] } }] })}\n\n`;
+  }
+
+  it("emits streaming deltas and returns the full assistant text", async () => {
+    installFetch(() =>
+      Promise.resolve(streamResponse([dataLine("Hel"), dataLine("lo"), "data: [DONE]\n\n"])),
+    );
+    const deltas: string[] = [];
+    const result = await reasonStream([{ role: "user", content: "greet" }], (delta) => {
+      deltas.push(delta);
+    });
+    expect(deltas).toEqual(["Hel", "lo"]);
+    expect(result.text).toBe("Hello");
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it("handles SSE data lines split across network chunks", async () => {
+    const payload = dataLine("chunked");
+    installFetch(() => Promise.resolve(streamResponse([payload.slice(0, 18), payload.slice(18)])));
+    const deltas: string[] = [];
+    const result = await reasonStream([{ role: "user", content: "greet" }], (delta) => {
+      deltas.push(delta);
+    });
+    expect(deltas).toEqual(["chunked"]);
+    expect(result.text).toBe("chunked");
+  });
+
+  it("reassembles a tool call from its streamed deltas", async () => {
+    installFetch(() =>
+      Promise.resolve(
+        streamResponse([
+          toolLine({ index: 0, id: "call_1", function: { name: "jmcp_status", arguments: "" } }),
+          toolLine({ index: 0, function: { arguments: "{}" } }),
+          "data: [DONE]\n\n",
+        ]),
+      ),
+    );
+    const result = await reasonStream([{ role: "user", content: "status?" }], () => undefined);
+    expect(result.text).toBe("");
+    expect(result.toolCalls).toEqual([{ id: "call_1", name: "jmcp_status", arguments: "{}" }]);
+  });
+
+  it("includes the tools array in the request when provided", async () => {
+    const fetchDouble = installFetch(() => Promise.resolve(streamResponse(["data: [DONE]\n\n"])));
+    await reasonStream(
+      [{ role: "user", content: "hi" }],
+      () => undefined,
+      undefined,
+      VOICE_MODEL,
+      VOICE_TOOL_SPECS,
+    );
+    const raw = fetchDouble.mock.calls[0][1]?.body;
+    expect(typeof raw).toBe("string");
+    if (typeof raw === "string") {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed !== null && typeof parsed === "object" && "tools" in parsed) {
+        expect(Array.isArray(parsed.tools)).toBe(true);
+      } else {
+        throw new Error("expected a tools array in the payload");
+      }
+    }
+  });
+
+  it("forwards an abort signal to the streaming reasoning endpoint", async () => {
+    const controller = new AbortController();
+    const fetchDouble = installFetch(() => Promise.resolve(streamResponse(["data: [DONE]\n\n"])));
+    await reasonStream([{ role: "user", content: "hi" }], () => undefined, controller.signal);
+    expect(fetchDouble.mock.calls[0][1]?.signal).toBe(controller.signal);
+  });
+});
+
+describe("voiceTools", () => {
+  it("exposes the expected tool catalog, gating mutations behind confirmed", () => {
+    const names = VOICE_TOOL_SPECS.map((spec) => spec.function.name);
+    expect(names).toContain("jmcp_status");
+    expect(names).toContain("submit_microtask");
+    expect(names).toContain("start_autonomous_action");
+    const submit = VOICE_TOOL_SPECS.find((spec) => spec.function.name === "submit_microtask");
+    expect(submit?.function.parameters.required).toContain("confirmed");
+  });
+
+  it("summarizes a read-only status call", async () => {
+    installFetch(() =>
+      Promise.resolve(jsonResponse({ ok: true, systems: [{ name: "jmcpd" }, { name: "jeryu" }] })),
+    );
+    const spoken = await executeVoiceTool("jmcp_status", "{}");
+    expect(spoken).toContain("healthy");
+    expect(spoken).toContain("2 systems");
+  });
+
+  it("counts work orders by status", async () => {
+    installFetch(() =>
+      Promise.resolve(
+        jsonResponse([{ status: "submitted" }, { status: "completed" }, { status: "completed" }]),
+      ),
+    );
+    const spoken = await executeVoiceTool("list_work_orders", "{}");
+    expect(spoken).toContain("3 work orders");
+    expect(spoken).toContain("2 completed");
+  });
+
+  it("refuses a state change without confirmation and does not POST", async () => {
+    const fetchDouble = installFetch(() => Promise.resolve(jsonResponse({})));
+    const spoken = await executeVoiceTool(
+      "submit_microtask",
+      JSON.stringify({ id: "research.concept-scan" }),
+    );
+    expect(spoken.toLowerCase()).toContain("confirm");
+    expect(fetchDouble).toHaveBeenCalledTimes(0);
+  });
+
+  it("submits a microtask once confirmed", async () => {
+    const fetchDouble = installFetch(() => Promise.resolve(jsonResponse({}, true, 200)));
+    const spoken = await executeVoiceTool(
+      "submit_microtask",
+      JSON.stringify({ id: "research.concept-scan", confirmed: true }),
+    );
+    expect(spoken).toContain("Queued");
+    const call = fetchDouble.mock.calls[0];
+    expect(call[0]).toContain("/microtasks/research.concept-scan/submit");
+    expect(call[1]?.method).toBe("POST");
   });
 });
 
@@ -163,6 +344,13 @@ describe("synthesize", () => {
     const result = await synthesize("hello operator");
     expect(result).toBe(audio);
     expect(result.type).toBe("audio/ogg");
+  });
+
+  it("forwards an abort signal to the synthesis endpoint", async () => {
+    const controller = new AbortController();
+    const fetchDouble = installFetch(() => Promise.resolve(blobResponse(new Blob())));
+    await synthesize("hello operator", controller.signal);
+    expect(fetchDouble.mock.calls[0][1]?.signal).toBe(controller.signal);
   });
 
   it("throws when the synthesis endpoint response is not ok", async () => {
