@@ -39,6 +39,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/systems", get(systems))
         .route("/microtasks", get(microtasks))
+        .route("/microtasks/queue", get(microtask_queue))
         .route("/microtasks/:id/submit", post(submit_microtask))
         .route("/autonomous-actions", get(autonomous_actions))
         .route(
@@ -149,6 +150,15 @@ async fn autonomous_actions(
 async fn microtasks(State(state): State<AppState>) -> Result<Json<Value>, (StatusCode, String)> {
     let microtasks = state.list_microtasks().map_err(internal_error)?;
     Ok(Json(json!(microtasks)))
+}
+
+/// The live microtask QUEUE — the actual work orders the planner has minted
+/// (any status), as opposed to `/microtasks` which lists the catalog of types.
+async fn microtask_queue(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_orders = state.list_microtask_work_orders().map_err(internal_error)?;
+    Ok(Json(json!(work_orders)))
 }
 
 async fn submit_microtask(

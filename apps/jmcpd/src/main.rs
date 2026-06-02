@@ -16,9 +16,12 @@ use std::{
 };
 use uuid::Uuid;
 
+mod dispatch_loop;
 mod telegram_helpers;
 #[cfg(test)]
 mod tests;
+
+use crate::dispatch_loop::{dispatcher_loop, DispatcherConfig};
 
 use crate::telegram_helpers::{
     decide_from_telegram, emit_structured_event, status_from_telegram, submit_from_telegram,
@@ -43,6 +46,18 @@ struct Args {
         default_value = "jmcp.telegram.offset"
     )]
     telegram_offset_file: PathBuf,
+    /// Enable the microtask dispatch loop (executes queued evidence-only microtasks).
+    #[arg(long, env = "JMCP_DISPATCHER", default_value_t = false)]
+    dispatcher_enabled: bool,
+    /// Seconds between dispatch sweeps.
+    #[arg(long, env = "JMCP_DISPATCHER_POLL_SECS", default_value_t = 30)]
+    dispatcher_poll_secs: u64,
+    /// Autonomously generate a deduped repo-refresh audit microtask per --dispatcher-repo each tick.
+    #[arg(long, env = "JMCP_DISPATCHER_GENERATE", default_value_t = false)]
+    dispatcher_generate: bool,
+    /// Repository path the autonomous generator audits (repeatable; empty = generate nothing).
+    #[arg(long = "dispatcher-repo")]
+    dispatcher_repos: Vec<String>,
 }
 
 #[tokio::main]
@@ -69,6 +84,28 @@ async fn main() -> Result<()> {
                     json!({
                         "component": "telegram",
                         "reason": "poll_loop_failed",
+                        "error": err.to_string(),
+                    }),
+                );
+            }
+        });
+    }
+    if args.dispatcher_enabled {
+        let dispatcher_state = state.clone();
+        let config = DispatcherConfig {
+            poll: Duration::from_secs(args.dispatcher_poll_secs.max(1)),
+            lease_ttl: ChronoDuration::minutes(15),
+            generate: args.dispatcher_generate,
+            repos: args.dispatcher_repos.clone(),
+        };
+        tokio::spawn(async move {
+            if let Err(err) = dispatcher_loop(dispatcher_state, config).await {
+                emit_structured_event(
+                    "error",
+                    "runtime.stopped",
+                    json!({
+                        "component": "dispatcher",
+                        "reason": "dispatch_loop_failed",
                         "error": err.to_string(),
                     }),
                 );

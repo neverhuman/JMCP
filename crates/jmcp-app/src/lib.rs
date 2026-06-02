@@ -1,10 +1,13 @@
 #[cfg(test)]
+mod dispatch_tests;
+#[cfg(test)]
 mod tests;
 
 mod approval_flow;
 mod autonomous_actions;
 mod control_plane;
 mod control_plane_samples;
+mod dispatch;
 mod microtasks;
 mod runtime_health;
 
@@ -32,6 +35,7 @@ pub use control_plane_samples::{
     attention_inbox_sample, incident_records_sample, inventory_cards_sample, memory_records_sample,
     promotion_decisions_sample, voice_sessions_sample,
 };
+pub use dispatch::{DispatchReport, MicrotaskExecutor};
 
 #[derive(Debug, Error)]
 pub enum AppError {
