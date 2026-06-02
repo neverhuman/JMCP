@@ -1,18 +1,17 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use jcp_core::{Envelope, LocalSigner, Subject};
-use jmcp_approval_telegram::{TelegramBotClient, TelegramConfig};
 use serde_json::json;
 use serde_json::Value;
-use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::process::Command as StdCommand;
+
+mod doctor;
+mod telegram;
+
+use doctor::doctor_env;
+use telegram::{telegram_discover_ids, telegram_doctor};
 
 const DEFAULT_API_URL: &str = "http://127.0.0.1:18877";
-const DEFAULT_API_BIND: &str = "127.0.0.1:18877";
-const DEFAULT_COCKPIT_HOST: &str = "127.0.0.1";
-const DEFAULT_COCKPIT_PORT: u16 = 15873;
-const JERYU_PROTECTED_PORTS: &[u16] = &[2224, 8787, 8799, 8929, 18787, 18788, 19800];
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -182,186 +181,4 @@ async fn read_json_response(path: &str, response: reqwest::Response) -> Result<V
         anyhow::bail!("JMCP API {path} returned {status}: {text}");
     }
     Ok(serde_json::from_str(&text)?)
-}
-
-async fn telegram_doctor(env_file: PathBuf, offset_file: PathBuf) -> Result<()> {
-    let config = TelegramConfig::from_env_file_for_setup(&env_file)?;
-    let mut failed = false;
-
-    println!("JMCP_TELEGRAM_ENV={}", env_file.display());
-    println!("telegram_token=loaded (redacted)");
-    println!("telegram_api_base={}", config.api_base);
-    println!(
-        "telegram_allowlist=user_ids:{} chat_ids:{}",
-        config.allowed_user_ids.len(),
-        config.allowed_chat_ids.len()
-    );
-    println!("telegram_config={config:?}");
-
-    if !config.has_allowlist() {
-        eprintln!("error: telegram allowlist missing");
-        failed = true;
-    }
-
-    let client = TelegramBotClient::new(config);
-    match client.get_me().await {
-        Ok(me) => {
-            println!(
-                "telegram_getMe=ok id:{} username:{}",
-                me.id,
-                me.username.unwrap_or_else(|| "(none)".to_owned())
-            );
-        }
-        Err(err) => {
-            eprintln!("error: telegram getMe failed: {err}");
-            failed = true;
-        }
-    }
-
-    match std::fs::read_to_string(&offset_file) {
-        Ok(contents) => match contents.trim().parse::<i64>() {
-            Ok(offset) => println!(
-                "telegram_offset_file={} offset={offset}",
-                offset_file.display()
-            ),
-            Err(_) => {
-                eprintln!(
-                    "error: telegram offset file is not a valid integer: {}",
-                    offset_file.display()
-                );
-                failed = true;
-            }
-        },
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            println!(
-                "telegram_offset_file={} status=absent",
-                offset_file.display()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "error: telegram offset file could not be read: {}: {err}",
-                offset_file.display()
-            );
-            failed = true;
-        }
-    }
-
-    if failed {
-        anyhow::bail!("Telegram setup is not ready");
-    }
-    println!("Telegram setup is ready");
-    Ok(())
-}
-
-async fn telegram_discover_ids(env_file: PathBuf) -> Result<()> {
-    let config = TelegramConfig::from_env_file_for_setup(&env_file)?;
-    let client = TelegramBotClient::new(config);
-    let updates = client.get_updates(None, 0).await?;
-    let mut candidates = BTreeSet::new();
-    for update in updates {
-        if let Some(message) = update.message {
-            if let Some(user) = message.from {
-                candidates.insert(format!(
-                    "user_id={} chat_id={} chat_type={} username={} first_name={}",
-                    user.id,
-                    message.chat.id,
-                    message.chat.kind,
-                    user.username.unwrap_or_else(|| "(none)".to_owned()),
-                    user.first_name
-                ));
-            }
-        }
-    }
-
-    if candidates.is_empty() {
-        println!("No Telegram updates found. Send the bot a message, then rerun discover-ids.");
-    } else {
-        for candidate in candidates {
-            println!("{candidate}");
-        }
-    }
-    Ok(())
-}
-
-fn doctor_env(server: &str) -> Result<()> {
-    let api_bind = std::env::var("JMCP_API_BIND").unwrap_or_else(|_| DEFAULT_API_BIND.to_owned());
-    let cockpit_host =
-        std::env::var("JMCP_COCKPIT_HOST").unwrap_or_else(|_| DEFAULT_COCKPIT_HOST.to_owned());
-    let mut failed = false;
-    let cockpit_port_value =
-        std::env::var("JMCP_COCKPIT_PORT").unwrap_or_else(|_| DEFAULT_COCKPIT_PORT.to_string());
-    let cockpit_port = match parse_port(&cockpit_port_value) {
-        Ok(port) => port,
-        Err(message) => {
-            eprintln!("error: JMCP_COCKPIT_PORT {message}");
-            failed = true;
-            0
-        }
-    };
-
-    println!("JMCP_API_BIND={api_bind}");
-    println!("JMCP_API_URL={server}");
-    println!("JMCP_COCKPIT_HOST={cockpit_host}");
-    println!("JMCP_COCKPIT_PORT={cockpit_port}");
-
-    if let Some(port) = port_from_bind(&api_bind) {
-        if JERYU_PROTECTED_PORTS.contains(&port) {
-            eprintln!("error: JMCP_API_BIND uses Jeryu protected port {port}");
-            failed = true;
-        }
-        if let Some(owner) = listener_owner(port) {
-            println!("api bind conflict on port {port}: {owner}");
-        }
-    } else {
-        eprintln!("error: could not parse JMCP_API_BIND={api_bind}");
-        failed = true;
-    }
-
-    if cockpit_port != 0 && JERYU_PROTECTED_PORTS.contains(&cockpit_port) {
-        eprintln!("error: JMCP_COCKPIT_PORT uses Jeryu protected port {cockpit_port}");
-        failed = true;
-    }
-    if cockpit_port != 0 {
-        if let Some(owner) = listener_owner(cockpit_port) {
-            println!("cockpit bind conflict on port {cockpit_port}: {owner}");
-        }
-    }
-
-    for port in JERYU_PROTECTED_PORTS {
-        if let Some(owner) = listener_owner(*port) {
-            println!("Jeryu protected port {port} is occupied by: {owner}");
-        }
-    }
-
-    if listener_owner(8799).is_none() && listener_owner(8787).is_none() {
-        eprintln!("warning: Jeryu was not detected on 127.0.0.1:8799 or 127.0.0.1:8787");
-    }
-
-    if failed {
-        anyhow::bail!("JMCP environment is not safe");
-    }
-    println!("JMCP environment is safe for Jeryu coexistence");
-    Ok(())
-}
-
-fn parse_port(value: &str) -> Result<u16, String> {
-    if value.is_empty() || !value.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(format!("is not numeric: {value}"));
-    }
-    value
-        .parse::<u16>()
-        .map_err(|_| format!("is outside the valid TCP port range: {value}"))
-}
-
-fn port_from_bind(bind: &str) -> Option<u16> {
-    parse_port(bind.rsplit_once(':')?.1).ok()
-}
-
-fn listener_owner(port: u16) -> Option<String> {
-    let output = StdCommand::new("ss").args(["-ltnp"]).output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.lines()
-        .find(|line| line.contains(&format!(":{port} ")))
-        .map(|line| line.trim().to_owned())
 }

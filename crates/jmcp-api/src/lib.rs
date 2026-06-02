@@ -68,7 +68,10 @@ pub fn router(state: AppState) -> Router {
 }
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
-    let systems = blocking_systems(state).await.unwrap_or_default();
+    let systems = match blocking_systems(state).await {
+        Ok(systems) => systems,
+        Err(_) => Vec::new(),
+    };
     Json(json!({
         "ok": true,
         "system": "JMCP",
@@ -111,7 +114,10 @@ async fn work_order(
 }
 
 async fn systems(State(state): State<AppState>) -> Json<Value> {
-    let systems = blocking_systems(state).await.unwrap_or_default();
+    let systems = match blocking_systems(state).await {
+        Ok(systems) => systems,
+        Err(_) => Vec::new(),
+    };
     Json(json!(systems))
 }
 
@@ -133,7 +139,10 @@ async fn create_approval_challenge(
     State(state): State<AppState>,
     Json(request): Json<CreateApprovalChallengeRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let approver = request.approver.unwrap_or_else(|| "local".to_owned());
+    let approver = match request.approver {
+        Some(approver) => approver,
+        None => "local".to_owned(),
+    };
     let ttl = request.ttl_seconds.map(ChronoDuration::seconds);
     let created = state
         .create_local_approval_challenge(request.work_order_id, approver, ttl)
@@ -197,10 +206,10 @@ async fn adapters(
 
 async fn ecosystem() -> Json<Value> {
     let client = HttpJeryuClient::from_env();
-    let snapshot = client
-        .ecosystem()
-        .await
-        .unwrap_or_else(|err| EcosystemSnapshot::degraded(format!("jeryu ecosystem error: {err}")));
+    let snapshot = match client.ecosystem().await {
+        Ok(snapshot) => snapshot,
+        Err(err) => EcosystemSnapshot::degraded(format!("jeryu ecosystem error: {err}")),
+    };
     Json(json!(snapshot))
 }
 
@@ -227,27 +236,36 @@ async fn events(
     State(state): State<AppState>,
     Query(query): Query<EventsQuery>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let mut after = query.after.unwrap_or(0);
+    let mut after = match query.after {
+        Some(after) => after,
+        None => 0,
+    };
     let stream =
         IntervalStream::new(tokio::time::interval(Duration::from_secs(1))).map(move |_| {
-            let events = state.events_after(after).unwrap_or_default();
+            let events = match state.events_after(after) {
+                Ok(events) => events,
+                Err(_) => Vec::new(),
+            };
             if let Some(last) = events.last() {
                 after = last.id;
             }
-            let data = serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_owned());
+            let data = match serde_json::to_string(&events) {
+                Ok(data) => data,
+                Err(_) => "[]".to_owned(),
+            };
             Ok(Event::default().event("jmcp.events").data(data))
         });
     Sse::new(stream)
 }
 
-fn internal_error(err: anyhow::Error) -> (axum::http::StatusCode, String) {
+fn internal_error(err: impl std::fmt::Display) -> (axum::http::StatusCode, String) {
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         err.to_string(),
     )
 }
 
-fn bad_request(err: anyhow::Error) -> (StatusCode, String) {
+fn bad_request(err: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::BAD_REQUEST, err.to_string())
 }
 
@@ -256,7 +274,10 @@ fn decide_with_token(
     request: ApprovalTokenRequest,
     decision: ApprovalDecision,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let actor = local_actor(request.approver.unwrap_or_else(|| "local".to_owned()));
+    let actor = local_actor(match request.approver {
+        Some(approver) => approver,
+        None => "local".to_owned(),
+    });
     let outcome = state
         .decide_approval_by_token(&request.token, actor, decision)
         .map_err(approval_decision_error)?;
@@ -282,7 +303,8 @@ async fn blocking_systems(state: AppState) -> Result<Vec<SystemStatus>, anyhow::
 }
 
 async fn blocking_adapter_health(state: AppState) -> Result<Vec<AdapterHealth>, anyhow::Error> {
-    tokio::task::spawn_blocking(move || state.list_adapter_health())
+    let health = tokio::task::spawn_blocking(move || state.list_adapter_health())
         .await
-        .map_err(|err| anyhow::anyhow!("adapter health task failed: {err}"))?
+        .map_err(|err| anyhow::anyhow!("adapter health task failed: {err}"))?;
+    Ok(health?)
 }

@@ -19,6 +19,9 @@ use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 
 mod ecosystem;
+#[cfg(test)]
+mod tests;
+
 pub use ecosystem::{EcosystemSnapshot, EcosystemTool, JeryuEcosystem};
 
 const DEFAULT_JERYU_BASE_URL: &str = "http://127.0.0.1:8799";
@@ -72,16 +75,20 @@ impl HttpJeryuClient {
     /// Build a client from `JERYU_BASE_URL` and the optional `JERYU_API_KEY`
     /// (sent as a bearer token; never logged).
     pub fn from_env() -> Self {
-        let http = reqwest::Client::builder()
+        let http = match reqwest::Client::builder()
             .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        {
+            Ok(client) => client,
+            Err(_) => reqwest::Client::new(),
+        };
         Self {
             http,
             base_url: env_or("JERYU_BASE_URL", DEFAULT_JERYU_BASE_URL),
-            api_key: std::env::var("JERYU_API_KEY")
-                .ok()
-                .filter(|value| !value.is_empty()),
+            api_key: match std::env::var("JERYU_API_KEY").ok() {
+                Some(value) if !value.is_empty() => Some(value),
+                _ => None,
+            },
         }
     }
 
@@ -184,14 +191,17 @@ fn is_forge_kind(kind: &str) -> bool {
 }
 
 fn run_id_for(work_order: &WorkOrder) -> Result<String> {
-    work_order
-        .task
-        .payload
-        .get("run_id")
-        .and_then(|value| value.as_str())
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_owned())
-        .context("jeryu work order missing run_id")
+    match non_empty_owned(
+        work_order
+            .task
+            .payload
+            .get("run_id")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+    ) {
+        Some(value) => Ok(value),
+        None => anyhow::bail!("jeryu work order missing run_id"),
+    }
 }
 
 fn evidence_for(run: &JeryuCiRun) -> Vec<Evidence> {
@@ -209,11 +219,10 @@ fn evidence_for(run: &JeryuCiRun) -> Vec<Evidence> {
         });
     }
     for artifact in &run.artifacts {
-        let uri = artifact
-            .digest
-            .clone()
-            .map(|digest| format!("sha256:{digest}"))
-            .unwrap_or_else(|| artifact.reference.clone());
+        let uri = match artifact.digest.as_deref() {
+            Some(digest) => format!("sha256:{digest}"),
+            None => artifact.reference.clone(),
+        };
         evidence.push(Evidence {
             kind: format!("jeryu.artifact.{}", artifact.kind),
             uri,
@@ -223,7 +232,11 @@ fn evidence_for(run: &JeryuCiRun) -> Vec<Evidence> {
     // A deterministic digest over the run identity binds the evidence set to a
     // concrete forge state for replay/audit.
     let digest = hex::encode(Sha256::digest(
-        format!("{}|{}", run.run_id, run.status.clone().unwrap_or_default()).as_bytes(),
+        match run.status.as_deref() {
+            Some(status) => format!("{}|{}", run.run_id, status),
+            None => format!("{}|", run.run_id),
+        }
+        .as_bytes(),
     ));
     evidence.push(Evidence {
         kind: "jeryu.ci-run.digest".to_owned(),
@@ -234,113 +247,15 @@ fn evidence_for(run: &JeryuCiRun) -> Vec<Evidence> {
 }
 
 fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key)
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| default.to_owned())
+    match std::env::var(key).ok() {
+        Some(value) if !value.is_empty() => value,
+        _ => default.to_owned(),
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    struct StubClient {
-        run: JeryuCiRun,
-    }
-
-    #[async_trait]
-    impl JeryuClient for StubClient {
-        async fn health(&self) -> Result<()> {
-            Ok(())
-        }
-
-        async fn ci_run_evidence(&self, _run_id: &str) -> Result<JeryuCiRun> {
-            Ok(self.run.clone())
-        }
-    }
-
-    struct DownClient;
-
-    #[async_trait]
-    impl JeryuClient for DownClient {
-        async fn health(&self) -> Result<()> {
-            anyhow::bail!("forge down")
-        }
-
-        async fn ci_run_evidence(&self, _run_id: &str) -> Result<JeryuCiRun> {
-            anyhow::bail!("forge unreachable")
-        }
-    }
-
-    fn adapter_with(run: JeryuCiRun) -> JeryuAdapter {
-        JeryuAdapter::new(Arc::new(StubClient { run }))
-    }
-
-    fn ok_run() -> JeryuCiRun {
-        JeryuCiRun {
-            run_id: "run-42".to_owned(),
-            status: Some("success".to_owned()),
-            commit_sha: Some("deadbeef".to_owned()),
-            artifacts: vec![JeryuArtifact {
-                kind: "junit".to_owned(),
-                reference: "junit.xml".to_owned(),
-                digest: Some("abc".to_owned()),
-            }],
-        }
-    }
-
-    #[tokio::test]
-    async fn maps_ci_run_to_evidence() {
-        let adapter = adapter_with(ok_run());
-        let work_order = WorkOrder::submit("t/jeryu/e", "jeryu.ci", json!({"run_id": "run-42"}));
-        let evidence = adapter.execute(&work_order).await.unwrap();
-        assert_eq!(evidence[0].kind, "jeryu.ci-run");
-        assert_eq!(evidence[0].uri, "jeryu://ci/run/run-42");
-        assert!(evidence
-            .iter()
-            .any(|e| e.kind == "jeryu.ci-run.commit" && e.uri == "jeryu://commit/deadbeef"));
-        assert!(evidence
-            .iter()
-            .any(|e| e.kind == "jeryu.artifact.junit" && e.uri == "sha256:abc"));
-        assert!(evidence
-            .iter()
-            .any(|e| e.kind == "jeryu.ci-run.digest" && e.uri.starts_with("sha256:")));
-    }
-
-    #[tokio::test]
-    async fn evidence_snapshot_kind_is_accepted() {
-        let adapter = adapter_with(ok_run());
-        let work_order =
-            WorkOrder::submit("t/jeryu/e", "jeryu.snapshot", json!({"run_id": "run-42"}));
-        assert!(adapter.execute(&work_order).await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn unknown_kind_fails_closed() {
-        let adapter = adapter_with(ok_run());
-        let work_order = WorkOrder::submit("t/jeryu/e", "unrelated.kind", json!({}));
-        assert!(adapter.execute(&work_order).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn missing_run_id_fails_closed() {
-        let adapter = adapter_with(ok_run());
-        let work_order = WorkOrder::submit("t/jeryu/e", "jeryu.ci", json!({}));
-        assert!(adapter.execute(&work_order).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn unreachable_forge_errors() {
-        let adapter = JeryuAdapter::new(Arc::new(DownClient));
-        let work_order = WorkOrder::submit("t/jeryu/e", "jeryu.ci", json!({"run_id": "run-42"}));
-        assert!(adapter.execute(&work_order).await.is_err());
-    }
-
-    #[test]
-    fn service_card_advertises_forge_capabilities() {
-        let card = JeryuAdapter::default().service_card();
-        assert_eq!(card.name, "jeryu");
-        assert!(card.capabilities.iter().any(|c| c == "ci-evidence"));
+fn non_empty_owned(value: Option<String>) -> Option<String> {
+    match value {
+        Some(value) => Some(value),
+        _ => None,
     }
 }
