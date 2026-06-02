@@ -8,8 +8,10 @@
 # either way, so the win is putting ASR+TTS back on the GPU next to a slightly
 # smaller-context 30B.
 #
-# VRAM budget (24GB): 30B-A3B AWQ @ gpu-util 0.80, ctx 8192 ≈ 19GB + distil-large-v3
-# ASR ≈ 1.5GB + Kokoro TTS ≈ 1GB ≈ 21.5GB. Fits with headroom.
+# VRAM budget (24GB): the 30B-A3B AWQ process is ~21GB @ gpu-util 0.80. That leaves
+# ~3GB for speech, so ASR must be small: distil-small.en (~0.5GB resident, low
+# transient) + Kokoro TTS (~1GB) keeps ~1.3GB free for inference peaks. distil-large-v3
+# (1.9GB) leaves only ~130MB and OOMs on the first transcribe — use distil-small.en.
 set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPEECH="$HERE/../speech"
@@ -20,8 +22,8 @@ pkill -f asr_sidecar.py 2>/dev/null || true
 pkill -f tts_sidecar.py 2>/dev/null || true
 sleep 2
 
-echo "[realtime] ASR distil-large-v3 on GPU (:18878)…" >&2
-ASR_MODEL=distil-large-v3 ASR_DEVICE=cuda ASR_COMPUTE=float16 \
+echo "[realtime] ASR distil-small.en on GPU (:18878)…" >&2
+ASR_MODEL="${ASR_MODEL:-distil-small.en}" ASR_DEVICE=cuda ASR_COMPUTE=float16 \
   setsid nohup "$SPEECH/.venv/bin/python" "$SPEECH/asr_sidecar.py" >/tmp/asr.log 2>&1 < /dev/null &
 
 echo "[realtime] Kokoro TTS on GPU (:18901)…" >&2
