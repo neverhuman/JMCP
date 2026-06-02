@@ -23,8 +23,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
-      - name: Install jankurai (pinned git rev — supply-chain evidence)
-        run: cargo install --git https://github.com/neverhuman/jankurai --rev 3c804453 jankurai --locked
+      - name: Ensure jankurai (local or pinned git rev)
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          if command -v jankurai >/dev/null 2>&1; then
+            jankurai --version
+          else
+            cargo install --git https://github.com/neverhuman/jankurai --rev 3c804453 jankurai --locked
+          fi
       - run: jankurai --version
       - name: Jankurai tool command evidence
         run: |
