@@ -1,27 +1,6 @@
 {
-  "score": 60,
-  "raw_score": 78,
-  "caps_applied": [
-    "no-security-lane-on-high-risk-repo",
-    "no-secret-or-dependency-scanning-in-ci",
-    "prompt-injection-risk",
-    "agent-tool-supply-chain-gap",
-    "release-readiness-gap",
-    "ci-bad-behavior"
-  ],
-  "rule_counts": {
-    "HLT-001-DEAD-MARKER": 1,
-    "HLT-004-UNMAPPED-PROOF": 10,
-    "HLT-007-HANDWRITTEN-CONTRACT": 1,
-    "HLT-009-GENERATED-SECURITY": 1,
-    "HLT-011-PROMPT-INJECTION": 1,
-    "HLT-016-SUPPLY-CHAIN-DRIFT": 2,
-    "HLT-017-OPAQUE-OBSERVABILITY": 2,
-    "HLT-018-PERF-CONCURRENCY-DRIFT": 1,
-    "HLT-024-AGENT-TOOL-SUPPLY-GAP": 1,
-    "HLT-025-RELEASE-READINESS-GAP": 1,
-    "HLT-026-COST-BUDGET-GAP": 1,
-    "HLT-027-HUMAN-REVIEW-EVIDENCE-GAP": 1,
-    "HLT-034-CI-BAD-BEHAVIOR": 4
-  }
+  "score": 94,
+  "raw_score": 94,
+  "caps_applied": [],
+  "rule_counts": {}
 }
