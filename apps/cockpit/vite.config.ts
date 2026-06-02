@@ -42,6 +42,13 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path: string) => path.replace(/^\/llm/, ""),
         },
+        // JMCP control-plane API, so the voice agent's tools can read status and
+        // take actions same-origin (no CORS; stays on the box).
+        "/jmcp": {
+          target: env.VITE_JMCP_TARGET ?? "http://127.0.0.1:18877",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/jmcp/, ""),
+        },
       },
     },
     preview: {

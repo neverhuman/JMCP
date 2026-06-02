@@ -1,24 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  VOICE_MODEL,
   micSupported,
   reasonStream,
   synthesize,
   transcribe,
   type ChatMessage,
+  type ToolCallFunction,
 } from "../lib/speechClient";
+import { VOICE_TOOL_SPECS, executeVoiceTool } from "../lib/voiceTools";
 
 // Always-listening, privacy-first voice assistant. The mic runs continuously in
 // the browser; a lightweight energy VAD segments speech; each utterance is
-// transcribed on the LOCAL ASR sidecar. While idle we only act when the
-// transcript contains the WAKE WORD ("hey jmcp"); the words after it (or the next
-// utterance) become the command, which is reasoned by the local LLM and spoken
-// back by the local TTS. No audio or text leaves the machine. Barge-in: speaking
-// is cancelled the moment you start talking again.
+// transcribed on the LOCAL ASR sidecar and handled as a command while the widget
+// is active. No audio or text leaves the machine. Barge-in cancels stale
+// reasoning, queued TTS, and current playback the moment you start talking again.
 
 export type VoiceState =
   | "off"
-  | "listening" // idle, waiting for the wake word
-  | "armed" // heard the wake word, capturing the command
+  | "listening"
+  | "armed" // retained for compatibility with older wake-word UI states
   | "transcribing"
   | "thinking"
   | "speaking"
@@ -37,18 +38,57 @@ export interface VoiceAssistantApi {
 
 const WAKE_WORDS = ["hey jmcp", "hey jim cp", "jmcp", "computer"];
 const RMS_THRESHOLD = 0.018; // speech vs silence
-const SILENCE_MS = 400; // trailing silence that ends an utterance (snappy turn-taking)
-const FIRST_CHUNK_CHARS = 40; // flush the opening phrase fast for low time-to-first-word
-const MIN_SPEECH_MS = 250; // ignore blips
+const SILENCE_MS = 350; // trailing silence that ends an utterance (snappy turn-taking)
+const FIRST_CHUNK_CHARS = 28; // flush the opening phrase fast for low time-to-first-word
+const MIN_SPEECH_MS = 175; // ignore blips
 const SYSTEM_PROMPT =
   "You are JMCP, a concise local voice assistant running on the operator's own machine. " +
-  "Answer in one or two short spoken sentences. Be direct and helpful.";
+  "You can call tools to read JMCP status and to take actions. Keep spoken answers to one " +
+  "or two short sentences. For any tool that CHANGES state (submitting or starting work), " +
+  "first say what you will do and ask the operator to confirm out loud; only call it with " +
+  "confirmed=true after they agree. Do not read raw JSON or long ids aloud unless asked.";
+const MAX_TOOL_HOPS = 4; // cap tool round-trips per turn so a loop can't run away
+const PREFERRED_AUDIO_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/ogg;codecs=opus",
+  "audio/webm",
+  "audio/ogg",
+];
+
+type QueuedSpeech = {
+  audio: Promise<Blob | null>;
+  signal?: AbortSignal;
+};
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
+}
+
+function preferredAudioType(): string | undefined {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return undefined;
+  }
+  return PREFERRED_AUDIO_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+}
 
 export function stripWakeWord(text: string): { triggered: boolean; command: string } {
-  const lower = text.toLowerCase();
   for (const wake of WAKE_WORDS) {
-    const index = lower.indexOf(wake);
-    if (index >= 0) {
+    const pattern = new RegExp(`(^|\\b)${escapeRegExp(wake)}(?=$|[\\s,.:;-])`, "i");
+    const match = pattern.exec(text);
+    if (match !== null) {
+      const prefix = match[1] ?? "";
+      const index = match.index + prefix.length;
       const after = text.slice(index + wake.length).replace(/^[\s,.:;-]+/, "");
       return { triggered: true, command: after.trim() };
     }
@@ -71,9 +111,10 @@ export function useVoiceAssistant(): VoiceAssistantApi {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechQueueRef = useRef<string[]>([]);
+  const speechQueueRef = useRef<QueuedSpeech[]>([]);
   const drainingRef = useRef<boolean>(false);
   const historyRef = useRef<ChatMessage[]>([{ role: "system", content: SYSTEM_PROMPT }]);
+  const turnAbortRef = useRef<AbortController | null>(null);
   // VAD bookkeeping
   const speakingSinceRef = useRef<number>(0);
   const silenceSinceRef = useRef<number>(0);
@@ -84,26 +125,43 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     setState(next);
   }, []);
 
+  const abortActiveWork = useCallback(() => {
+    turnAbortRef.current?.abort();
+    turnAbortRef.current = null;
+  }, []);
+
   const cancelPlayback = useCallback(() => {
+    abortActiveWork();
     speechQueueRef.current = [];
-    drainingRef.current = false;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
       audioRef.current = null;
     }
-  }, []);
+  }, [abortActiveWork]);
 
   // Synthesize + play one sentence, resolving when it finishes.
-  const playOne = useCallback(async (text: string): Promise<void> => {
-    const ogg = await synthesize(text);
+  const playOne = useCallback(async (queued: QueuedSpeech): Promise<void> => {
+    const ogg = await queued.audio;
+    if (ogg === null || queued.signal?.aborted || stateRef.current === "off") {
+      return;
+    }
     const url = URL.createObjectURL(ogg);
     const audio = new Audio(url);
     audioRef.current = audio;
     await new Promise<void>((resolve) => {
-      audio.onended = () => resolve();
-      audio.onerror = () => resolve();
-      void audio.play().catch(() => resolve());
+      const finish = () => {
+        queued.signal?.removeEventListener("abort", finish);
+        resolve();
+      };
+      if (queued.signal?.aborted) {
+        finish();
+        return;
+      }
+      queued.signal?.addEventListener("abort", finish, { once: true });
+      audio.onended = () => finish();
+      audio.onerror = () => finish();
+      void audio.play().catch(() => finish());
     });
     URL.revokeObjectURL(url);
     if (audioRef.current === audio) audioRef.current = null;
@@ -120,24 +178,35 @@ export function useVoiceAssistant(): VoiceAssistantApi {
       if (next === undefined) continue;
       try {
         await playOne(next);
-      } catch {
-        /* ignore a single failed sentence */
+      } catch (err) {
+        if (!isAbortError(err)) {
+          /* ignore a single failed sentence */
+        }
       }
     }
     drainingRef.current = false;
-    if (stateRef.current === "speaking") setBoth("listening");
+    if (stateRef.current === "speaking") {
+      setBoth("listening");
+    }
   }, [playOne, setBoth]);
 
-  const enqueueSpeech = useCallback((text: string) => {
+  const enqueueSpeech = useCallback((text: string, signal?: AbortSignal) => {
     const clean = text.trim();
     if (clean.length === 0) return;
-    speechQueueRef.current.push(clean);
+    const audio = synthesize(clean, signal).then(
+      (blob) => blob,
+      () => null,
+    );
+    speechQueueRef.current.push({ audio, signal });
     void drainQueue();
   }, [drainQueue]);
 
   // Stream the reply and speak each complete sentence as soon as it lands, so
   // first audio plays within a second instead of after the whole reply.
   const runCommand = useCallback(async (command: string) => {
+    abortActiveWork();
+    const turnAbort = new AbortController();
+    turnAbortRef.current = turnAbort;
     setBoth("thinking");
     historyRef.current.push({ role: "user", content: command });
     speechQueueRef.current = [];
@@ -151,7 +220,7 @@ export function useVoiceAssistant(): VoiceAssistantApi {
       if (chunks !== null) {
         let consumed = 0;
         for (const chunk of chunks) {
-          enqueueSpeech(chunk);
+          enqueueSpeech(chunk, turnAbort.signal);
           consumed += chunk.length;
         }
         pending = pending.slice(consumed);
@@ -160,37 +229,71 @@ export function useVoiceAssistant(): VoiceAssistantApi {
       if (force) {
         const lastSpace = pending.lastIndexOf(" ");
         if (lastSpace > 12) {
-          enqueueSpeech(pending.slice(0, lastSpace));
+          enqueueSpeech(pending.slice(0, lastSpace), turnAbort.signal);
           pending = pending.slice(lastSpace + 1);
           firstChunk = false;
         }
       }
     };
+    const onDelta = (delta: string) => {
+      pending += delta;
+      if (/[,.!?:;]/.test(pending)) {
+        flushChunks(false);
+      } else if (pending.length > (firstChunk ? FIRST_CHUNK_CHARS : 120)) {
+        flushChunks(true);
+      }
+    };
     try {
-      const answer = await reasonStream(historyRef.current, (delta) => {
-        pending += delta;
-        if (/[,.!?:;]\s/.test(pending)) {
-          flushChunks(false);
-        } else if (pending.length > (firstChunk ? FIRST_CHUNK_CHARS : 120)) {
-          flushChunks(true);
+      let lastText = "";
+      // Tool loop: the model may call JMCP tools before it speaks the final answer.
+      // Each hop streams content (spoken live) and/or tool calls; we run the tools,
+      // feed the results back, and continue until it answers with no further calls.
+      for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+        pending = "";
+        firstChunk = true;
+        const result = await reasonStream(
+          historyRef.current,
+          onDelta,
+          turnAbort.signal,
+          VOICE_MODEL,
+          VOICE_TOOL_SPECS,
+        );
+        enqueueSpeech(pending, turnAbort.signal);
+        pending = "";
+        lastText = result.text;
+        if (result.toolCalls.length === 0) {
+          historyRef.current.push({ role: "assistant", content: result.text });
+          break;
         }
-      });
-      enqueueSpeech(pending);
-      pending = "";
-      historyRef.current.push({ role: "assistant", content: answer });
+        // Record the assistant's tool-call turn, run each tool, feed results back.
+        const toolCalls: ToolCallFunction[] = result.toolCalls.map((call) => ({
+          id: call.id,
+          type: "function",
+          function: { name: call.name, arguments: call.arguments },
+        }));
+        historyRef.current.push({ role: "assistant", content: result.text, tool_calls: toolCalls });
+        setBoth("thinking");
+        for (const call of result.toolCalls) {
+          const output = await executeVoiceTool(call.name, call.arguments, turnAbort.signal);
+          historyRef.current.push({ role: "tool", tool_call_id: call.id, content: output });
+        }
+      }
       if (historyRef.current.length > 13) {
         historyRef.current = [
           historyRef.current[0],
           ...historyRef.current.slice(historyRef.current.length - 12),
         ];
       }
-      setReply(answer);
-      if (answer.length === 0) enqueueSpeech("Sorry, I did not catch that.");
+      setReply(lastText);
+      if (lastText.length === 0) enqueueSpeech("Sorry, I did not catch that.", turnAbort.signal);
     } catch (err) {
+      if (turnAbort.signal.aborted || isAbortError(err)) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "reasoning failed");
       setBoth("listening");
     }
-  }, [enqueueSpeech, setBoth]);
+  }, [abortActiveWork, enqueueSpeech, setBoth]);
 
   const handleUtterance = useCallback(async (blob: Blob) => {
     if (stateRef.current === "off") return;
@@ -216,10 +319,15 @@ export function useVoiceAssistant(): VoiceAssistantApi {
   const beginCapture = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) return;
-    // barge-in: talking over the assistant cancels its playback
-    if (stateRef.current === "speaking") cancelPlayback();
+    // barge-in: talking over the assistant cancels playback and stale LLM/TTS work
+    if (stateRef.current === "speaking" || stateRef.current === "thinking") {
+      cancelPlayback();
+      setBoth("listening");
+    }
     chunksRef.current = [];
-    const recorder = new MediaRecorder(stream);
+    const audioType = preferredAudioType();
+    const recorder =
+      audioType === undefined ? new MediaRecorder(stream) : new MediaRecorder(stream, { mimeType: audioType });
     recorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
@@ -231,7 +339,7 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     };
     recorder.start();
     capturingRef.current = true;
-  }, [cancelPlayback, handleUtterance]);
+  }, [cancelPlayback, handleUtterance, setBoth]);
 
   const endCapture = useCallback((durationMs: number) => {
     const recorder = recorderRef.current;
@@ -311,9 +419,14 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         const now = Date.now();
 
         if (rms > RMS_THRESHOLD) {
-          // Only capture while idle: don't transcribe the assistant's own TTS
-          // (half-duplex turn-taking; echo cancellation guards the rest).
-          if (!capturingRef.current && stateRef.current === "listening") {
+          // Echo cancellation handles assistant playback; live speech here is a
+          // barge-in and cancels stale reasoning/playback work.
+          if (
+            !capturingRef.current &&
+            (stateRef.current === "listening" ||
+              stateRef.current === "speaking" ||
+              stateRef.current === "thinking")
+          ) {
             speakingSinceRef.current = now;
             beginCapture();
           }
