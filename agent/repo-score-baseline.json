@@ -1,6 +1,8 @@
 {
-  "score": 94,
-  "raw_score": 94,
+  "score": 92,
+  "raw_score": 92,
   "caps_applied": [],
-  "rule_counts": {}
+  "rule_counts": {
+    "HLT-001-DEAD-MARKER": 1
+  }
 }
