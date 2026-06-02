@@ -43,12 +43,42 @@ pub struct EcosystemTool {
     pub queue: Option<u32>,
 }
 
-/// The full ecosystem snapshot: every governed tool across repos plus the
-/// dependency edges that relate them.
+/// A governed git repository in the Jeryu-managed ecosystem — a first-class
+/// node so the cockpit can show every repo Jeryu actively manages, its head,
+/// health, conformance score, and how many governed tools live in it.
+///
+/// Serializes camelCase (`toolCount`) for the cockpit.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EcosystemRepo {
+    pub name: String,
+    /// Current branch/commit Jeryu has checked out, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    /// Jankurai conformance score (0-100) when Jeryu reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conformance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<String>,
+    /// Management status, e.g. "managed" or "adopting".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Number of governed tools that live in this repo.
+    pub tool_count: u32,
+}
+
+/// The full ecosystem snapshot: every governed tool across repos, the managed
+/// repos themselves, plus the dependency edges that relate the tools.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EcosystemSnapshot {
     pub tools: Vec<EcosystemTool>,
+    /// The git repos Jeryu actively manages (first-class nodes). Derived from
+    /// tool tags when Jeryu sends no explicit repo records.
+    #[serde(default)]
+    pub repos: Vec<EcosystemRepo>,
     /// `true` when produced from a live Jeryu response; `false` when degraded.
     pub live: bool,
     /// Explicit degradation note; empty only when fully live and well-formed.
@@ -63,6 +93,7 @@ impl EcosystemSnapshot {
     pub fn degraded(reason: impl Into<String>) -> Self {
         Self {
             tools: Vec::new(),
+            repos: Vec::new(),
             live: false,
             degraded_reason: reason.into(),
         }
@@ -90,11 +121,106 @@ struct RawJeryuTool {
     queue: Option<u32>,
 }
 
+/// Permissive view of a repo record as Jeryu may emit it (all optional).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawJeryuRepo {
+    name: Option<String>,
+    head: Option<String>,
+    score: Option<u32>,
+    conformance: Option<String>,
+    health: Option<String>,
+    status: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawEcosystem {
     #[serde(default)]
     tools: Vec<RawJeryuTool>,
+    #[serde(default)]
+    repos: Vec<RawJeryuRepo>,
+}
+
+/// Worst-of health across the tools that belong to `repo` (degraded > watch >
+/// nominal), or `None` when the repo has no tools.
+fn derive_repo_health(tools: &[EcosystemTool], repo: &str) -> Option<String> {
+    let mut worst = 0u8;
+    let mut any = false;
+    for tool in tools.iter().filter(|t| t.repo.as_deref() == Some(repo)) {
+        any = true;
+        let rank = match tool.health.as_deref() {
+            Some("degraded") | Some("blocked") => 2,
+            Some("watch") => 1,
+            _ => 0,
+        };
+        worst = worst.max(rank);
+    }
+    if !any {
+        return None;
+    }
+    Some(
+        match worst {
+            2 => "degraded",
+            1 => "watch",
+            _ => "nominal",
+        }
+        .to_owned(),
+    )
+}
+
+/// Build first-class repo nodes: prefer Jeryu's explicit repo records (which can
+/// carry head/score), otherwise derive them from the distinct repos the tools
+/// are tagged with (first-seen order), so "N repos" becomes real nodes.
+fn build_repos(raw_repos: Vec<RawJeryuRepo>, tools: &[EcosystemTool]) -> Vec<EcosystemRepo> {
+    let count_tools = |name: &str| {
+        tools
+            .iter()
+            .filter(|t| t.repo.as_deref() == Some(name))
+            .count() as u32
+    };
+    if !raw_repos.is_empty() {
+        return raw_repos
+            .into_iter()
+            .filter_map(|r| {
+                let name = r.name?;
+                let health = r.health.or_else(|| derive_repo_health(tools, &name));
+                let tool_count = count_tools(&name);
+                Some(EcosystemRepo {
+                    head: r.head,
+                    score: r.score,
+                    conformance: r.conformance,
+                    status: r.status,
+                    health,
+                    tool_count,
+                    name,
+                })
+            })
+            .collect();
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for tool in tools {
+        if let Some(repo) = &tool.repo {
+            if !seen.iter().any(|s| s == repo) {
+                seen.push(repo.clone());
+            }
+        }
+    }
+    seen.into_iter()
+        .map(|name| {
+            let health = derive_repo_health(tools, &name);
+            let tool_count = count_tools(&name);
+            EcosystemRepo {
+                head: None,
+                score: None,
+                conformance: None,
+                status: Some("managed".to_owned()),
+                health,
+                tool_count,
+                name,
+            }
+        })
+        .collect()
 }
 
 /// Normalize a raw Jeryu ecosystem payload into the cockpit shape, marking any
@@ -125,6 +251,7 @@ fn normalize(raw: RawEcosystem) -> EcosystemSnapshot {
             queue: record.queue,
         });
     }
+    let repos = build_repos(raw.repos, &tools);
     let live = !tools.is_empty();
     let degraded_reason = if !live {
         "jeryu returned no ecosystem tools".to_owned()
@@ -135,6 +262,7 @@ fn normalize(raw: RawEcosystem) -> EcosystemSnapshot {
     };
     EcosystemSnapshot {
         tools,
+        repos,
         live,
         degraded_reason,
     }
@@ -225,10 +353,59 @@ mod tests {
             .expect("jekko tool present");
         assert_eq!(jekko.repo.as_deref(), Some("Jekko"));
         assert!(jekko.depends_on.iter().any(|d| d == "jeryu.repo.adopt"));
+        // First-class repo nodes are derived from the tools' repo tags.
+        assert_eq!(snapshot.repos.len(), 2, "Jeryu + Jekko become repo nodes");
+        let jekko_repo = snapshot
+            .repos
+            .iter()
+            .find(|r| r.name == "Jekko")
+            .expect("Jekko repo node");
+        assert_eq!(jekko_repo.tool_count, 1);
+        assert_eq!(jekko_repo.health.as_deref(), Some("degraded"));
+        assert_eq!(jekko_repo.status.as_deref(), Some("managed"));
         let wire = serde_json::to_value(&snapshot.tools[0]).unwrap();
         assert!(wire.get("className").is_some());
         assert!(wire.get("sideEffects").is_some());
         assert!(wire.get("dataClasses").is_some());
+    }
+
+    #[test]
+    fn derives_repo_nodes_with_worst_of_health() {
+        let snapshot = normalize(raw_from(json!({
+            "tools": [
+                { "name": "jeryu.repo.adopt", "className": "x", "conformance": "C1", "sideEffects": "git", "repo": "Jeryu", "health": "watch" },
+                { "name": "jeryu.status", "className": "x", "conformance": "C1", "sideEffects": "none", "repo": "Jeryu", "health": "nominal" }
+            ]
+        })));
+        assert_eq!(snapshot.repos.len(), 1);
+        let jeryu = &snapshot.repos[0];
+        assert_eq!(jeryu.name, "Jeryu");
+        assert_eq!(jeryu.tool_count, 2);
+        assert_eq!(
+            jeryu.health.as_deref(),
+            Some("watch"),
+            "worst-of watch+nominal"
+        );
+        // Wire shape is camelCase for the cockpit.
+        let wire = serde_json::to_value(jeryu).unwrap();
+        assert!(wire.get("toolCount").is_some());
+    }
+
+    #[test]
+    fn uses_explicit_jeryu_repo_records_with_head_and_score() {
+        let snapshot = normalize(raw_from(json!({
+            "tools": [
+                { "name": "t", "className": "x", "conformance": "C1", "sideEffects": "none", "repo": "JMCP" }
+            ],
+            "repos": [
+                { "name": "JMCP", "head": "main@abc1234", "score": 94, "conformance": "C2", "status": "managed", "health": "nominal" }
+            ]
+        })));
+        assert_eq!(snapshot.repos.len(), 1);
+        let repo = &snapshot.repos[0];
+        assert_eq!(repo.score, Some(94));
+        assert_eq!(repo.head.as_deref(), Some("main@abc1234"));
+        assert_eq!(repo.tool_count, 1, "tool count joined from tools[]");
     }
 
     #[test]
