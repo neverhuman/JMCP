@@ -32,6 +32,26 @@ Config via env (see each `run-*.sh`): `ASR_MODEL` (default `large-v3`),
   transcribes it back **exactly**. Both sidecars co-resident in ~4.4 GB VRAM
   (≈19.7 GB free for a 20–30B reasoning model).
 
+## Two-way Telegram voice approvals
+
+The sidecars back a full **voice approval loop** in `jmcpd` (Rust, via
+`crates/jmcp-adapter-speech` + `jmcp-approval-telegram`):
+
+- **Inbound**: a Telegram voice note → `getFile`/download → ASR `/transcribe` →
+  the risk-scored [`evaluate_voice_approval`] decision → applied through the same
+  `decide_approval_by_token` path as a typed `/approve`. Low-risk intents accept a
+  spoken "approve"/"reject"; **high-risk** intents (deploy, delete, rotate, …)
+  require the **spoken confirmation token**. Recognizer confidence must clear 0.75.
+- **Outbound**: every reply is sent as text and **spoken back** as a voice note
+  (`sendVoice`, TTS `?format=ogg`).
+
+Enable it: `jmcpd --telegram-poll --telegram-voice` (sidecars must be running;
+`JMCP_ASR_URL` / `JMCP_TTS_URL` override the defaults). The plaintext challenge
+token is held **in memory only** (never persisted), keyed by approver.
+
+`telegram_voice_demo.py` is a standalone both-ways demo (no Rust build needed):
+`.venv-tts/bin/python telegram_voice_demo.py {discover|send <chat_id> <text>|listen}`.
+
 ## Upgrading the models
 
 The sidecars are model-agnostic. The `local-speech.inventory-asr-tts` microtask

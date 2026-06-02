@@ -109,6 +109,11 @@ impl TelegramConfig {
         format!("{}/bot{}/{}", self.api_base, self.token, method)
     }
 
+    /// URL to download a file by its Telegram `file_path` (from `getFile`).
+    pub(crate) fn file_url(&self, file_path: &str) -> String {
+        format!("{}/file/bot{}/{}", self.api_base, self.token, file_path)
+    }
+
     pub fn is_allowed(&self, user_id: i64, chat_id: i64) -> bool {
         if self.allowed_user_ids.is_empty() && self.allowed_chat_ids.is_empty() {
             return false;

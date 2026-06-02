@@ -101,6 +101,7 @@ fn telegram_message(text: &str, user_id: i64, chat_id: i64) -> TelegramMessage {
             kind: "private".to_owned(),
         },
         text: Some(text.to_owned()),
+        voice: None,
     }
 }
 
@@ -159,6 +160,7 @@ async fn telegram_submit_delivers_challenge_and_approve_is_single_use() {
             42,
             99,
         ),
+        None,
     )
     .await
     .unwrap();
@@ -175,6 +177,7 @@ async fn telegram_submit_delivers_challenge_and_approve_is_single_use() {
         &client,
         &state,
         telegram_message(&format!("/approve {token}"), 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -189,6 +192,7 @@ async fn telegram_submit_delivers_challenge_and_approve_is_single_use() {
         &client,
         &state,
         telegram_message(&format!("/approve {token}"), 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -209,6 +213,7 @@ async fn telegram_deny_rejects_work_order() {
         &client,
         &state,
         telegram_message("/submit tenant/service/entity demo.run {}", 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -218,6 +223,7 @@ async fn telegram_deny_rejects_work_order() {
         &client,
         &state,
         telegram_message(&format!("/deny {token}"), 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -242,6 +248,7 @@ async fn telegram_rejects_unauthorized_and_malformed_submit() {
         &client,
         &state,
         telegram_message("/submit tenant/service/entity demo.run {}", 7, 99),
+        None,
     )
     .await
     .unwrap();
@@ -252,6 +259,7 @@ async fn telegram_rejects_unauthorized_and_malformed_submit() {
         &client,
         &state,
         telegram_message("/submit tenant/service/entity demo.run {bad", 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -268,9 +276,14 @@ async fn telegram_reports_unknown_expired_and_wrong_approver_tokens() {
     ));
     let state = AppState::new(SqliteStore::in_memory().unwrap());
 
-    handle_telegram_message(&client, &state, telegram_message("/approve nope", 42, 99))
-        .await
-        .unwrap();
+    handle_telegram_message(
+        &client,
+        &state,
+        telegram_message("/approve nope", 42, 99),
+        None,
+    )
+    .await
+    .unwrap();
     assert!(last_sent_text(&sent).contains("unknown token"));
 
     let work_order =
@@ -287,6 +300,7 @@ async fn telegram_reports_unknown_expired_and_wrong_approver_tokens() {
         &client,
         &state,
         telegram_message(&format!("/approve {}", expired.token), 42, 99),
+        None,
     )
     .await
     .unwrap();
@@ -301,6 +315,7 @@ async fn telegram_reports_unknown_expired_and_wrong_approver_tokens() {
         &client,
         &state,
         telegram_message(&format!("/approve {}", challenge.token), 43, 99),
+        None,
     )
     .await
     .unwrap();
