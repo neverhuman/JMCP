@@ -25,11 +25,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
       - name: Ensure jankurai (local or pinned git rev)
         run: |
-          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          export PATH="/home/ubuntu/.local/bin:/home/ubuntu/.jeryu/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           if command -v jankurai >/dev/null 2>&1; then
             jankurai --version
-          else
+          elif [ "${GITHUB_ACTIONS:-}" = "true" ]; then
             cargo install --git https://github.com/neverhuman/jankurai --rev 3c804453 jankurai --locked
+          else
+            echo "jankurai is required on the local Jeryu runner" >&2
+            exit 1
           fi
       - run: jankurai --version
       - name: Jankurai tool command evidence
