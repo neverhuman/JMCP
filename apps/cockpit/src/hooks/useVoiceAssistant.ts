@@ -34,6 +34,7 @@ export interface VoiceAssistantApi {
   wakeWords: string[];
   start: () => Promise<void>;
   stop: () => void;
+  sendText: (text: string) => Promise<void>;
 }
 
 const WAKE_WORDS = ["hey jmcp", "hey jim cp", "jmcp", "computer"];
@@ -186,7 +187,8 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     }
     drainingRef.current = false;
     if (stateRef.current === "speaking") {
-      setBoth("listening");
+      // Settle back to the mic loop if it's running, else to off (text-test path).
+      setBoth(streamRef.current === null ? "off" : "listening");
     }
   }, [playOne, setBoth]);
 
@@ -291,7 +293,7 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         return;
       }
       setError(err instanceof Error ? err.message : "reasoning failed");
-      setBoth("listening");
+      setBoth(streamRef.current === null ? "off" : "listening");
     }
   }, [abortActiveWork, enqueueSpeech, setBoth]);
 
@@ -315,6 +317,18 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     setTranscript(heard);
     await runCommand(heard);
   }, [runCommand, setBoth]);
+
+  // Run a typed command through the same reason -> tools -> speak pipeline as a
+  // spoken turn. Lets the agent be tested and used without a microphone (the
+  // reply is still synthesized and played through the browser's speakers).
+  const sendText = useCallback(async (text: string) => {
+    const clean = text.trim();
+    if (clean.length === 0) return;
+    if (stateRef.current === "transcribing" || stateRef.current === "thinking") return;
+    setError(null);
+    setTranscript(clean);
+    await runCommand(clean);
+  }, [runCommand]);
 
   const beginCapture = useCallback(() => {
     const stream = streamRef.current;
@@ -454,5 +468,6 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     wakeWords: WAKE_WORDS,
     start,
     stop,
+    sendText,
   };
 }

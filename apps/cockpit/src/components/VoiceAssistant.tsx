@@ -1,3 +1,4 @@
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Mic, MicOff, Loader2, Volume2, Brain, Ear } from "lucide-react";
 import { useVoiceAssistant, type VoiceState } from "../hooks/useVoiceAssistant";
 import "../voice-assistant.css";
@@ -27,32 +28,55 @@ function StateIcon({ state }: { state: VoiceState }) {
 
 export default function VoiceAssistant() {
   const voice = useVoiceAssistant();
+  const [draft, setDraft] = useState("");
   const active = voice.state !== "off" && voice.state !== "error";
+  const busy = voice.state === "thinking" || voice.state === "transcribing";
 
-  if (!voice.supported) {
-    // No mic (SSR / test / insecure origin): render a quiet disabled affordance.
-    return (
-      <aside className="voice-assistant" data-voice-state="off">
-        <span className="voice-toggle" aria-disabled="true">
-          <MicOff size={16} aria-hidden />
-          <span>Voice needs a microphone</span>
-        </span>
-      </aside>
-    );
-  }
+  const onDraftChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDraft(event.target.value);
+  };
+
+  const submitDraft = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const text = draft.trim();
+    if (text.length === 0) return;
+    setDraft("");
+    void voice.sendText(text);
+  };
 
   return (
     <aside className="voice-assistant" data-voice-state={voice.state} aria-live="polite">
-      <button
-        type="button"
-        className={active ? "voice-toggle active" : "voice-toggle"}
-        aria-pressed={active}
-        aria-label={active ? "Stop voice assistant" : "Start voice assistant"}
-        onClick={() => (active ? voice.stop() : void voice.start())}
-      >
-        <StateIcon state={voice.state} />
-        <span>{LABELS[voice.state]}</span>
-      </button>
+      {voice.supported ? (
+        <button
+          type="button"
+          className={active ? "voice-toggle active" : "voice-toggle"}
+          aria-pressed={active}
+          aria-label={active ? "Stop voice assistant" : "Start voice assistant"}
+          onClick={() => (active ? voice.stop() : void voice.start())}
+        >
+          <StateIcon state={voice.state} />
+          <span>{LABELS[voice.state]}</span>
+        </button>
+      ) : (
+        // No mic (desktop Mac without one, or insecure origin): the typed path
+        // below still drives the full agent — the reply is spoken aloud.
+        <span className="voice-toggle" aria-disabled="true">
+          <MicOff size={16} aria-hidden />
+          <span>No microphone — type to talk to JMCP</span>
+        </span>
+      )}
+
+      <form className="voice-text" onSubmit={submitDraft}>
+        <input
+          type="text"
+          value={draft}
+          onChange={onDraftChange}
+          aria-label="Type a command for JMCP"
+        />
+        <button type="submit" disabled={busy || draft.trim().length === 0}>
+          Send
+        </button>
+      </form>
 
       {(voice.transcript || voice.reply || voice.error) && (
         <div className="voice-log">
