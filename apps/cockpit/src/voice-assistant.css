@@ -1,0 +1,87 @@
+/* Floating always-listening voice assistant widget (standalone cockpit only). */
+.voice-assistant {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  font: inherit;
+}
+
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2b3245);
+  background: var(--surface, #141925);
+  color: var(--text, #e7ecf5);
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.voice-toggle:hover {
+  border-color: var(--accent, #6ea8fe);
+}
+
+.voice-toggle.active {
+  border-color: var(--accent, #6ea8fe);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 16%, var(--surface, #141925));
+}
+
+.voice-assistant[data-voice-state="speaking"] .voice-toggle.active,
+.voice-assistant[data-voice-state="armed"] .voice-toggle.active {
+  border-color: #59d499;
+}
+
+.voice-log {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border, #2b3245);
+  background: var(--surface, #141925);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.voice-log p {
+  margin: 0.15rem 0;
+}
+
+.voice-tag {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 0.4rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 22%, transparent);
+  color: var(--accent, #6ea8fe);
+}
+
+.voice-reply .voice-tag {
+  background: color-mix(in srgb, #59d499 22%, transparent);
+  color: #59d499;
+}
+
+.voice-error {
+  color: #ff9a9a;
+}
+
+.voice-assistant .spin {
+  animation: voice-spin 1s linear infinite;
+}
+
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
