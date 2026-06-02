@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.neverhuman.ai/jmcp/repair-queue.schema.json",
+  "title": "JMCP Repair Queue Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "ok",
+    "config",
+    "artifactRoot",
+    "requiredStates",
+    "checks",
+    "missing",
+    "generatedBy"
+  ],
+  "properties": {
+    "schema": {
+      "const": "https://schemas.neverhuman.ai/jmcp/repair-queue.schema.json"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "config": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requiredStates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generatedBy": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

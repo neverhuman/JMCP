@@ -1,0 +1,4 @@
+- article:
+  - paragraph: State proof
+  - heading "Success" [level=2]
+  - paragraph: The live cockpit UI is rendered in place and can be captured by Playwright.

@@ -93,7 +93,7 @@ record_replay_start_stop = true
 redact_secret_fields = true
 
 [scan]
-excluded_paths = ["tips/"]
+excluded_paths = ["tips/", ".jankurai/"]
 
 [smart_scan]
 full_scan_interval_secs = 3600

@@ -9,7 +9,31 @@ id = "proof-routing"
 mode = "auto"
 
 [[tools]]
+id = "proofbind"
+mode = "auto"
+
+[[tools]]
+id = "proofmark-rust"
+mode = "auto"
+
+[[tools]]
+id = "copy-code"
+mode = "auto"
+
+[[tools]]
 id = "security"
+mode = "auto"
+
+[[tools]]
+id = "ci-bad-behavior"
+mode = "auto"
+
+[[tools]]
+id = "git-bad-behavior"
+mode = "auto"
+
+[[tools]]
+id = "release-bad-behavior"
 mode = "auto"
 
 [[tools]]
@@ -26,4 +50,24 @@ mode = "auto"
 
 [[tools]]
 id = "rust-witness"
+mode = "auto"
+
+[[tools]]
+id = "authz-matrix"
+mode = "auto"
+
+[[tools]]
+id = "input-boundary"
+mode = "auto"
+
+[[tools]]
+id = "agent-tool-supply"
+mode = "auto"
+
+[[tools]]
+id = "release-readiness"
+mode = "auto"
+
+[[tools]]
+id = "cost-budget"
 mode = "auto"

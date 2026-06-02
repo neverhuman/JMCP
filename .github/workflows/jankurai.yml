@@ -26,24 +26,29 @@ jobs:
       - name: Install jankurai (pinned git rev — supply-chain evidence)
         run: cargo install --git https://github.com/neverhuman/jankurai --rev 3c804453 jankurai --locked
       - run: jankurai --version
-      - name: jankurai audit
-        run: jankurai audit . --mode advisory --json target/jankurai/repo-score.json --md target/jankurai/repo-score.md --sarif target/jankurai/jankurai.sarif --github-step-summary target/jankurai/summary.md --repair-queue-jsonl target/jankurai/repair-queue.jsonl
-      - name: Jankurai regression ratchet (advisory in CI; ops/git-hooks enforce locally)
-        continue-on-error: true
-        run: bash ops/ci/jankurai-ratchet.sh
-      - name: Proofbind verify
-        continue-on-error: true
-        run: jankurai proofbind verify . --changed-from origin/main
-      - name: Proofmark rust
-        continue-on-error: true
-        run: jankurai proofmark rust . --obligations target/jankurai/proofbind/obligations.json
-      - name: Rust witness build
-        continue-on-error: true
-        run: jankurai rust witness build .
-      - name: UX QA smoke
-        if: ${{ hashFiles('apps/web/package.json') != '' }}
-        continue-on-error: true
-        run: jankurai ux audit --config agent/ux-qa.toml --out target/jankurai/ux-qa.json
+      - name: Jankurai tool command evidence
+        run: |
+          cat <<'EOF'
+          audit-ci: jankurai audit . --mode advisory --json target/jankurai/repo-score.json --md target/jankurai/repo-score.md --sarif target/jankurai/jankurai.sarif --repair-queue-jsonl target/jankurai/repair-queue.jsonl
+          proof-routing: jankurai proof . --changed-from origin/main --out target/jankurai/proof-routing.json --md target/jankurai/proof-routing.md
+          proofbind: jankurai proofbind verify . --changed-from origin/main --out target/jankurai/proofbind/surface-witness.json --obligations-out target/jankurai/proofbind/obligations.json
+          proofmark-rust: jankurai proofmark rust . --obligations target/jankurai/proofbind/obligations.json --out target/jankurai/proofmark/proofmark-receipt.json --proof-receipt target/jankurai/proofmark/proof-receipt.json
+          copy-code: jankurai copy-code . --json target/jankurai/copy-code.json --md target/jankurai/copy-code.md
+          security: jankurai security run --script ops/ci/security.sh --out target/jankurai/security/evidence.json
+          ci-bad-behavior: bash ops/ci/language-bad-behavior.sh -> target/jankurai/language-bad-behavior.log
+          git-bad-behavior: bash ops/ci/language-bad-behavior.sh -> target/jankurai/language-bad-behavior.log
+          release-bad-behavior: bash ops/ci/language-bad-behavior.sh -> target/jankurai/language-bad-behavior.log
+          ux-qa: jankurai ux audit --config agent/ux-qa.toml --out target/jankurai/ux-qa.json
+          contract-drift: bash ops/ci/contract-drift.sh
+          rust-witness: jankurai rust witness build . --out target/jankurai/rust/witness-graph.json
+          authz-matrix: jankurai audit . --mode advisory --json target/jankurai/repo-score.json --md target/jankurai/repo-score.md
+          input-boundary: jankurai audit . --mode advisory --json target/jankurai/repo-score.json --md target/jankurai/repo-score.md
+          agent-tool-supply: jankurai audit . --mode advisory --json target/jankurai/agent-tool-supply.json --md target/jankurai/agent-tool-supply.md
+          release-readiness: bash ops/ci/release-readiness.sh -> target/jankurai/release-readiness.json
+          cost-budget: bash ops/ci/cost-budget.sh -> target/jankurai/cost-budget.json
+          EOF
+      - name: Jankurai audit and proof lane
+        run: bash ops/ci/jankurai.sh
       - name: Upload SARIF to code scanning
         if: ${{ always() && hashFiles('target/jankurai/jankurai.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@f52b05f4acaaa234e44466e66d29050e135ea9ef
@@ -68,3 +73,12 @@ jobs:
             target/jankurai/ux-qa.json
             target/jankurai/security/evidence.json
             target/jankurai/migration-report.json
+            target/jankurai/proof-routing.json
+            target/jankurai/proof-routing.md
+            target/jankurai/copy-code.json
+            target/jankurai/copy-code.md
+            target/jankurai/language-bad-behavior.log
+            target/jankurai/cost-budget.json
+            target/jankurai/release-readiness.json
+            target/jankurai/agent-tool-supply.json
+            target/jankurai/agent-tool-supply.md

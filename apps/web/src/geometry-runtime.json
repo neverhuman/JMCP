@@ -1,0 +1,11 @@
+{
+  "states": [
+    "Loading",
+    "Empty",
+    "Error",
+    "Permission denied",
+    "Success"
+  ],
+  "receipt": "target/jankurai/ux-qa/geometry.json",
+  "proof_host": "apps/web"
+}

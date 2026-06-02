@@ -1,0 +1,13 @@
+{
+  "name": "@jankurai/ux-qa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check dist/cli.js && node --check src/receipts/index.js",
+    "test": "node --test src/receipts/index.test.js"
+  },
+  "bin": {
+    "jankurai-ux-qa": "dist/cli.js"
+  }
+}

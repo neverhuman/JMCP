@@ -12,6 +12,8 @@ Shared runtime messages use JCP/1.0.0 envelopes before entering routing, approva
 
 JPCM is the V1 transport profile. In V1 it is implemented locally through the in-process replayable event bus by default. The profile defines ordering assumptions, delivery expectations, replay metadata, and idempotency requirements independently from any future remote transport.
 
+The canonical JCP schema at `schemas/jcp/1.0.0/jcp.schema.json` intentionally matches `tips/v6/JCP_1_0_0_Protocol.schema.json`. The JPCM schema at `schemas/jpcm/1.0.0/jpcm.schema.json` is the deliberately narrower local transport profile for this repository; `tips/v6/JPCM_PROTOCOL_V1_SCHEMA.json` remains preserved source material for the broader protocol shape.
+
 ## Persistence Decision
 
 Embedded SQLite is the V1 durable store. It records protocol envelopes, approvals, audit evidence, replay checkpoints, and adapter observations. This makes the local default inspectable and reproducible.
@@ -23,4 +25,3 @@ Approval is protocol-visible. Mutating or externally visible operations must inc
 ## Compatibility Decision
 
 JCP/1.0.0 is a stable V1 compatibility target. Breaking changes require a new protocol version, a migration note, and tests proving old-version rejection or compatibility behavior.
-

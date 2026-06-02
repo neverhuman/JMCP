@@ -1,0 +1,22 @@
+{
+  "id": "jmcp-rendered-ux-visual-review",
+  "comment": "Visual review and visual regression evidence for the JMCP rendered UX proof host.",
+  "viewports": [
+    {
+      "label": "desktop",
+      "width": 1280,
+      "height": 900
+    }
+  ],
+  "scenarios": [
+    {
+      "label": "success",
+      "url": "http://127.0.0.1:4173",
+      "selectors": [".proof-stage"]
+    }
+  ],
+  "paths": {
+    "bitmaps_reference": "apps/web/tests/rendered-ux.spec.ts-snapshots",
+    "bitmaps_test": "target/jankurai/ux-qa/backstop"
+  }
+}

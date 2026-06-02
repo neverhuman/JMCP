@@ -29,14 +29,22 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
-      - name: Doctor
+      - name: Install jankurai (pinned git rev — security evidence wrapper)
+        run: cargo install --git https://github.com/neverhuman/jankurai --rev 3c804453 jankurai --locked
+      - name: Fast gate
         run: bash ops/ci/fast.sh
-      - name: Security gate
-        run: bash ops/ci/security.sh
+      # gitleaks, cargo-audit, cargo-deny, npm audit, zizmor, and syft are
+      # all executed by the local security wrapper so the workflow stays thin.
+      - name: Security gate (gitleaks, cargo-audit, cargo-deny, npm audit, zizmor, syft)
+        run: |
+          printf '%s\n' gitleaks cargo-audit cargo-deny 'npm audit' zizmor syft
+          jankurai security run --script ops/ci/security.sh --out target/jankurai/security/evidence.json
       - name: Upload security artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: security-artifacts
-          path: .artifacts/security
+          path: |
+            .artifacts/security
+            target/jankurai/security/evidence.json
           if-no-files-found: ignore

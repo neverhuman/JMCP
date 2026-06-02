@@ -1,10 +1,9 @@
 # Event Contracts
 
-This directory holds authored event-contract sources for JMCP and JCP/1.0.0 traffic.
+This directory holds the generated event-contract surface for JMCP and JCP/1.0.0 traffic.
 
-Keep event envelopes and event payload definitions here so boundary checks can trace the source of truth without relying on generated clients or handwritten transport glue.
+The canonical source lives in `schemas/jcp/1.0.0/jcp.schema.json`. The copy in this directory is treated as generated contract output and is verified by `just contract-drift`.
 
 ## Current Sources
 
 - `jcp-envelope.schema.json`: the shared JCP/1.0.0 envelope shape used before shared routing, approval, audit, and replay.
-

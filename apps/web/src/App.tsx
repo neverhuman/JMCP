@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, LoaderCircle, Lock, ScreenShare, type LucideIcon } from "lucide-react";
 import CockpitApp from "../../cockpit/src/App";
+import { geometryRuntimeReceipt, requiredProofStates } from "./geometry-runtime";
 
 const proofStates = [
   { id: "loading", label: "Loading", description: "JMCP is synchronizing the cockpit state." },
@@ -16,7 +17,7 @@ function App() {
   const [activeState, setActiveState] = useState<ProofState>("success");
 
   return (
-    <main className="proof-shell">
+    <main className="proof-shell" data-proof-state={activeState} data-geometry-runtime={geometryRuntimeReceipt}>
       <section className="proof-hero" aria-labelledby="proof-title">
         <div className="proof-kicker">Rendered UX proof host</div>
         <h1 id="proof-title">JMCP cockpit states, verified visually.</h1>
@@ -47,13 +48,45 @@ function App() {
       </section>
 
       <section className="proof-stage" aria-label="Rendered state">
-        {activeState === "loading" && <StateCard icon={LoaderCircle} tone="loading" title="Loading" body="JMCP is fetching the current operator view and proof bundle." />}
-        {activeState === "empty" && <StateCard icon={ScreenShare} tone="empty" title="Empty" body="No work orders are currently visible in this test fixture." />}
-        {activeState === "error" && <StateCard icon={AlertTriangle} tone="error" title="Error" body="The host can present recovery guidance without losing structure." />}
-        {activeState === "permission-denied" && <StateCard icon={Lock} tone="locked" title="Permission denied" body="Access is blocked until the backend grants the required authority." />}
+        {activeState === "loading" && (
+          <StateCard
+            id="loading"
+            icon={LoaderCircle}
+            tone="loading"
+            title="Loading"
+            body="JMCP is fetching the current operator view and proof bundle."
+          />
+        )}
+        {activeState === "empty" && (
+          <StateCard
+            id="empty"
+            icon={ScreenShare}
+            tone="empty"
+            title="Empty"
+            body="No work orders are currently visible in this test fixture."
+          />
+        )}
+        {activeState === "error" && (
+          <StateCard
+            id="error"
+            icon={AlertTriangle}
+            tone="error"
+            title="Error"
+            body="The host can present recovery guidance without losing structure."
+          />
+        )}
+        {activeState === "permission-denied" && (
+          <StateCard
+            id="permission-denied"
+            icon={Lock}
+            tone="locked"
+            title="Permission denied"
+            body="Access is blocked until the backend grants the required authority."
+          />
+        )}
         {activeState === "success" && (
-          <div className="success-stage">
-            <article className="state-card state-success">
+          <div className="success-stage" data-state-panel="success">
+            <article className="state-card state-success" data-state-card="success">
               <div className="state-card-head">
                 <CheckCircle2 size={28} aria-hidden="true" />
                 <div>
@@ -79,18 +112,20 @@ function App() {
 }
 
 function StateCard({
+  id,
   icon: Icon,
   tone,
   title,
   body,
 }: {
+  id: (typeof requiredProofStates)[number]["id"];
   icon: LucideIcon;
   tone: "loading" | "empty" | "error" | "locked";
   title: string;
   body: string;
 }) {
   return (
-    <article className={`state-card state-${tone}`}>
+    <article className={`state-card state-${tone}`} data-state-card={id}>
       <div className="state-card-head">
         <Icon size={28} aria-hidden="true" />
         <div>

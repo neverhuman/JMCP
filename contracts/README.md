@@ -1,5 +1,5 @@
 # Contracts
 
-Put OpenAPI, JSON Schema, or protobuf **sources** here. Generated clients and bindings must live only under paths declared in `agent/generated-zones.toml`.
+Canonical protocol sources live under `schemas/`.
 
-Event contract sources live under `contracts/events/`.
+`contracts/events/` is generated event-contract output. It is declared in `agent/generated-zones.toml` and verified by `just contract-drift`; do not treat those files as handwritten sources.

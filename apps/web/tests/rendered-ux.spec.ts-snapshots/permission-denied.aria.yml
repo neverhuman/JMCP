@@ -1,0 +1,4 @@
+- article:
+  - paragraph: State proof
+  - heading "Permission denied" [level=2]
+  - paragraph: Access is blocked until the backend grants the required authority.

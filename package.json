@@ -5,7 +5,8 @@
   "description": "JMCP V1 repository automation and schema gates.",
   "license": "UNLICENSED",
   "workspaces": [
-    "apps/cockpit"
+    "apps/cockpit",
+    "packages/ux-qa"
   ],
   "scripts": {
     "doctor": "bash scripts/ci-local.sh doctor",
@@ -17,6 +18,8 @@
     "build": "npm --workspace @jmcp/cockpit run build",
     "typecheck": "npm --workspace @jmcp/cockpit run typecheck",
     "lint": "npm --workspace @jmcp/cockpit run lint",
-    "test": "npm --workspace @jmcp/cockpit run test"
+    "test": "npm --workspace @jmcp/cockpit run test",
+    "ux-qa:build": "npm --workspace @jankurai/ux-qa run build",
+    "ux-qa:test": "npm --workspace @jankurai/ux-qa run test"
   }
 }

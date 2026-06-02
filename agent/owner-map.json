@@ -1,98 +1,68 @@
 {
   "owners": {
-    ".github/": "ops",
-    "AGENTS.md": "agent",
-    "README.md": "workspace",
-    "adapters": {
-      "paths": [
-        "crates/**",
-        "apps/**"
-      ],
-      "responsibilities": [
-        "Telegram text intake and approvals",
-        "local Jankurai adapter",
-        "local Jeryu adapter",
-        "local Jekko adapter"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    },
-    "agent/": "agent",
-    "agent/repo-score-baseline.json": "agent",
-    "agent/coverage-sources.toml": "agent",
-    "agent/zyal/": "agent",
     ".agents/": "agent",
+    ".agents/skills/": "agent",
+    ".agents/workflows/": "agent",
     ".artifacts/": "ops",
+    ".claude/": "agent",
+    ".cursor/": "agent",
+    ".github/": "ops",
+    ".gitignore": "workspace",
+    ".editorconfig": "workspace",
+    ".env.example": "workspace",
+    "telegram.env": "workspace",
+    ".jeryu/": "tools",
+    ".npmrc": "tools",
+    "gitleaks.toml": "ops",
+    "AGENT_CHAT.md": "agent",
+    "AGENT_WORK_PLAN.md": "agent",
+    "AGENTS.md": "agent",
+    "CLAUDE.md": "agent",
+    "Cargo.toml": "tools",
+    "Cargo.lock": "tools",
+    "CHANGELOG.md": "standard",
+    "Justfile": "workspace",
+    "GEMINI.md": "agent",
+    "rust-toolchain.toml": "tools",
+    "README.md": "workspace",
+    "README-jankurai-scaffold.md": "agent",
+    "agent/": "agent",
+    "agent/coverage-sources.toml": "agent",
+    "agent/repo-score-baseline.json": "agent",
+    "agent/zyal/": "agent",
     "apps/": "apps",
-    "apps/web/": "apps",
+    "apps/**": "apps",
     "contracts/": "contracts",
     "contracts/events/": "contracts",
-    "core-runtime": {
-      "paths": [
-        "crates/**"
-      ],
-      "responsibilities": [
-        "Rust backend",
-        "embedded SQLite integration",
-        "in-process replayable event bus",
-        "JCP/1.0.0 runtime enforcement"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    },
+    "crates/**": "tools",
     "crates/": "tools",
     "crates/jankurai/tests/fixtures/coverage/": "agent",
-    "dashboard": {
-      "paths": [
-        "apps/**"
-      ],
-      "responsibilities": [
-        "React dashboard",
-        "operator approvals",
-        "runtime observability"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    },
     "db/": "data",
+    "deny.toml": "tools",
     "docs/": "standard",
+    "docs/**": "standard",
+    "docs/agent-native-standard.md": "standard",
     "docs/COVERAGE_*.md": "agent",
-    "governance": {
-      "paths": [
-        "AGENT_CHAT.md",
-        "AGENT_WORK_PLAN.md",
-        "AGENTS.md",
-        "agent/**",
-        "docs/**",
-        "paper/**"
-      ],
-      "responsibilities": [
-        "agent coordination",
-        "documentation governance",
-        "proof lane definitions",
-        "audit policy",
-        "architecture/security/testing/operations documentation",
-        "final architecture paper"
-      ]
-    },
+    "docs/architecture.md": "standard",
+    "docs/architecture/README.md": "standard",
+    "docs/decisions/README.md": "standard",
+    "docs/ide-integrations.md": "standard",
     "ops/": "ops",
     "ops/git-hooks/": "ops",
     "packages/": "tools",
+    "package-lock.json": "tools",
+    "package.json": "tools",
+    "paper/": "standard",
     "python/ai-service/": "ai",
+    "schemas/jcp/1.0.0/jcp.schema.json": "contracts",
+    "schemas/jpcm/1.0.0/jpcm.schema.json": "contracts",
+    "schemas/repair-queue.schema.json": "agent",
     "schemas/coverage-*.schema.json": "agent",
-    "tools/": "tools",
-    "tui": {
-      "paths": [
-        "apps/**",
-        "crates/**"
-      ],
-      "responsibilities": [
-        "Rust TUI",
-        "local operator workflows"
-      ],
-      "status": "reserved-not-owned-by-this-slice"
-    }
-  },
-  "protocol": "JCP/1.0.0",
-  "system": "JMCP",
-  "transport_profile": "JPCM",
-  "version": 1,
-  "workspace": "jankurai"
+    "scripts/": "ops",
+    "scripts/ci-doctor.sh": "ops",
+    "scripts/ci-local.sh": "ops",
+    "scripts/dev/stop-jmcp-dev.sh": "ops",
+    "scripts/verify-jmcp-env.sh": "ops",
+    "tools/": "tools"
+  }
 }
