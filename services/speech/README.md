@@ -49,8 +49,17 @@ Enable it: `jmcpd --telegram-poll --telegram-voice` (sidecars must be running;
 `JMCP_ASR_URL` / `JMCP_TTS_URL` override the defaults). The plaintext challenge
 token is held **in memory only** (never persisted), keyed by approver.
 
-`telegram_voice_demo.py` is a standalone both-ways demo (no Rust build needed):
-`.venv-tts/bin/python telegram_voice_demo.py {discover|send <chat_id> <text>|listen}`.
+The supported standalone demo is the Rust CLI:
+
+```bash
+rtk cargo run -p jmcpctl -- telegram voice-demo discover
+rtk cargo run -p jmcpctl -- telegram voice-demo send <chat_id> "your message"
+rtk cargo run -p jmcpctl -- telegram voice-demo listen --reply-voice --seconds 60
+```
+
+It reads the Telegram env file from `JMCP_TELEGRAM_ENV` (default
+`telegram.env`) and uses `JMCP_ASR_URL` / `JMCP_TTS_URL` for the local speech
+sidecars.
 
 ## Upgrading the models
 
