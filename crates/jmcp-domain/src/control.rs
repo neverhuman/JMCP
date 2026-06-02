@@ -230,3 +230,85 @@ pub struct AutonomousActionOverrides {
     pub poll_timeout_secs: Option<u64>,
     pub metadata: Option<Value>,
 }
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicrotaskCard {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub kind: MicrotaskKind,
+    pub subject: MicrotaskSubject,
+    pub work_order_kind: MicrotaskWorkOrderKind,
+    pub resource_intent: MicrotaskResourceIntent,
+    pub safety: MicrotaskSafetyDefaults,
+    pub inputs: MicrotaskInputDefaults,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct MicrotaskKind(pub String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct MicrotaskSubject(pub String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct MicrotaskWorkOrderKind(pub String);
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicrotaskResourceIntent {
+    pub network: MicrotaskResourceScope,
+    pub gpu: MicrotaskResourceScope,
+    pub speech: MicrotaskResourceScope,
+    pub durable_mutation: MicrotaskResourceScope,
+    pub evidence_goal: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MicrotaskResourceScope {
+    None,
+    LocalOnly,
+    InventoryOnly,
+    EvidenceOnly,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicrotaskSafetyDefaults {
+    pub evidence_oriented: bool,
+    pub live: bool,
+    pub allow_network: bool,
+    pub allow_gpu: bool,
+    pub allow_external_durable_mutation: bool,
+    pub max_stages: u32,
+    pub timeout_secs: u64,
+    pub submitted_by: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MicrotaskInputDefaults {
+    pub repo: Option<String>,
+    pub concept: Option<String>,
+    pub model_roots: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MicrotaskOverrides {
+    pub run_id: Option<String>,
+    pub repo: Option<String>,
+    pub concept: Option<String>,
+    pub model_root: Option<String>,
+    pub live: Option<bool>,
+    pub allow_network: Option<bool>,
+    pub allow_gpu: Option<bool>,
+    pub allow_external_durable_mutation: Option<bool>,
+    pub max_stages: Option<u32>,
+    pub timeout_secs: Option<u64>,
+    pub metadata: Option<Value>,
+}

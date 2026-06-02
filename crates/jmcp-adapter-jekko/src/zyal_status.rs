@@ -98,4 +98,3 @@ mod tests {
         assert_eq!(parsed.state_label(), "complete");
     }
 }
-

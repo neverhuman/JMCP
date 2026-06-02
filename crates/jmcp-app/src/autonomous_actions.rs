@@ -85,6 +85,10 @@ impl AppState {
     }
 }
 
+pub(crate) fn validate_autonomous_action_id(id: &str) -> AppResult<()> {
+    action_by_id(id).map(|_| ())
+}
+
 fn action_by_id(id: &str) -> AppResult<&'static ActionDefinition> {
     ACTIONS
         .iter()

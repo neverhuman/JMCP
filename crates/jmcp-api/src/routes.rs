@@ -8,7 +8,7 @@ use axum::{
 use chrono::Duration as ChronoDuration;
 use jcp_core::Envelope;
 use jmcp_app::{local_actor, AppState, ApprovalDecisionError};
-use jmcp_domain::{ApprovalDecision, AutonomousActionOverrides, SystemStatus};
+use jmcp_domain::{ApprovalDecision, AutonomousActionOverrides, MicrotaskOverrides, SystemStatus};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
@@ -38,10 +38,16 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/systems", get(systems))
+        .route("/microtasks", get(microtasks))
+        .route("/microtasks/:id/submit", post(submit_microtask))
         .route("/autonomous-actions", get(autonomous_actions))
         .route(
             "/autonomous-actions/:id/submit",
             post(submit_autonomous_action),
+        )
+        .route(
+            "/autonomous-actions/:id/queue-microtasks",
+            post(queue_autonomous_action_microtasks),
         )
         .route("/work-orders", post(submit).get(list))
         .route("/work-orders/:id", get(work_order))
@@ -140,6 +146,22 @@ async fn autonomous_actions(
     Ok(Json(json!(actions)))
 }
 
+async fn microtasks(State(state): State<AppState>) -> Result<Json<Value>, (StatusCode, String)> {
+    let microtasks = state.list_microtasks().map_err(internal_error)?;
+    Ok(Json(json!(microtasks)))
+}
+
+async fn submit_microtask(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(overrides): Json<MicrotaskOverrides>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_order = state
+        .submit_microtask(&id, overrides)
+        .map_err(bad_request)?;
+    Ok(Json(json!(work_order)))
+}
+
 async fn submit_autonomous_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -149,6 +171,17 @@ async fn submit_autonomous_action(
         .submit_autonomous_action(&id, overrides)
         .map_err(bad_request)?;
     Ok(Json(json!(work_order)))
+}
+
+async fn queue_autonomous_action_microtasks(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(overrides): Json<MicrotaskOverrides>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_orders = state
+        .queue_autonomous_action_microtasks(&id, overrides)
+        .map_err(bad_request)?;
+    Ok(Json(json!(work_orders)))
 }
 
 async fn list(
@@ -319,6 +352,71 @@ mod autonomous_action_route_tests {
     }
 
     #[tokio::test]
+    async fn microtasks_route_returns_deterministic_catalog() {
+        let Json(value) = microtasks(State(test_state())).await.unwrap();
+        let microtasks = value.as_array().expect("microtasks array");
+        let ids = microtasks
+            .iter()
+            .map(|microtask| microtask["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                "jankurai.repo-refresh-audit",
+                "jankurai.changed-path-audit",
+                "research.concept-scan",
+                "router.tool-build-probe",
+                "router.open-model-reasoning-survey",
+                "local-model.inventory-20b-30b",
+                "local-speech.inventory-asr-tts",
+            ]
+        );
+        assert_eq!(microtasks[0]["safety"]["live"], false);
+        assert_eq!(
+            microtasks[0]["safety"]["submittedBy"],
+            "jmcp.microtask_planner"
+        );
+    }
+
+    #[tokio::test]
+    async fn microtask_submit_route_creates_signed_work_order_without_challenge() {
+        let state = test_state();
+        let Json(value) = submit_microtask(
+            State(state.clone()),
+            Path("research.concept-scan".to_owned()),
+            Json(MicrotaskOverrides::default()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(value["subject"], "jmcp/jekko/research-concept-scan");
+        assert_eq!(value["task"]["kind"], "reason");
+        assert_eq!(value["task"]["payload"]["metadata"]["microtask"], true);
+        assert_eq!(
+            value["task"]["payload"]["metadata"]["submitted_by"],
+            "jmcp.microtask_planner"
+        );
+        assert_eq!(value["task"]["payload"]["live"], false);
+        assert_eq!(state.list_work_orders().unwrap().len(), 1);
+        assert!(state.list_approval_challenges().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn microtask_submit_route_rejects_unknown_microtask() {
+        let error = submit_microtask(
+            State(test_state()),
+            Path("missing".to_owned()),
+            Json(MicrotaskOverrides::default()),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(error.1.contains("unknown microtask"));
+    }
+
+    #[tokio::test]
     async fn autonomous_action_submit_route_creates_signed_work_order_without_challenge() {
         let state = test_state();
         let Json(value) = submit_autonomous_action(
@@ -352,5 +450,25 @@ mod autonomous_action_route_tests {
 
         assert_eq!(error.0, StatusCode::BAD_REQUEST);
         assert!(error.1.contains("unknown autonomous action"));
+    }
+
+    #[tokio::test]
+    async fn autonomous_action_queue_microtasks_route_returns_child_work_orders() {
+        let state = test_state();
+        let Json(value) = queue_autonomous_action_microtasks(
+            State(state.clone()),
+            Path("repo-bank-bug-scan".to_owned()),
+            Json(MicrotaskOverrides::default()),
+        )
+        .await
+        .unwrap();
+        let work_orders = value.as_array().expect("work orders array");
+
+        assert_eq!(work_orders.len(), 7);
+        assert_eq!(state.list_work_orders().unwrap().len(), 7);
+        assert_eq!(
+            work_orders[0]["task"]["payload"]["metadata"]["parent_action_id"],
+            "repo-bank-bug-scan"
+        );
     }
 }
