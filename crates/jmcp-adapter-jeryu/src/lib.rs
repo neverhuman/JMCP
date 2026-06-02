@@ -19,10 +19,11 @@ use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 
 mod ecosystem;
+mod repos;
 #[cfg(test)]
 mod tests;
 
-pub use ecosystem::{EcosystemSnapshot, EcosystemTool, JeryuEcosystem};
+pub use ecosystem::{EcosystemRepo, EcosystemSnapshot, EcosystemTool, JeryuEcosystem};
 
 const DEFAULT_JERYU_BASE_URL: &str = "http://127.0.0.1:8799";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;

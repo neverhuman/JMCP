@@ -19,6 +19,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+pub use crate::repos::EcosystemRepo;
+use crate::repos::{build_repos, RawJeryuRepo};
+
 /// A governed tool/asset node in the ecosystem graph.
 ///
 /// Serializes to the cockpit `ToolAsset` shape (camelCase) consumed by
@@ -43,12 +46,16 @@ pub struct EcosystemTool {
     pub queue: Option<u32>,
 }
 
-/// The full ecosystem snapshot: every governed tool across repos plus the
-/// dependency edges that relate them.
+/// The full ecosystem snapshot: every governed tool across repos, the managed
+/// repos themselves, plus the dependency edges that relate the tools.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EcosystemSnapshot {
     pub tools: Vec<EcosystemTool>,
+    /// The git repos Jeryu actively manages (first-class nodes). Derived from
+    /// tool tags when Jeryu sends no explicit repo records.
+    #[serde(default)]
+    pub repos: Vec<EcosystemRepo>,
     /// `true` when produced from a live Jeryu response; `false` when degraded.
     pub live: bool,
     /// Explicit degradation note; empty only when fully live and well-formed.
@@ -63,6 +70,7 @@ impl EcosystemSnapshot {
     pub fn degraded(reason: impl Into<String>) -> Self {
         Self {
             tools: Vec::new(),
+            repos: Vec::new(),
             live: false,
             degraded_reason: reason.into(),
         }
@@ -95,6 +103,8 @@ struct RawJeryuTool {
 struct RawEcosystem {
     #[serde(default)]
     tools: Vec<RawJeryuTool>,
+    #[serde(default)]
+    repos: Vec<RawJeryuRepo>,
 }
 
 /// Normalize a raw Jeryu ecosystem payload into the cockpit shape, marking any
@@ -125,6 +135,7 @@ fn normalize(raw: RawEcosystem) -> EcosystemSnapshot {
             queue: record.queue,
         });
     }
+    let repos = build_repos(raw.repos, &tools);
     let live = !tools.is_empty();
     let degraded_reason = if !live {
         "jeryu returned no ecosystem tools".to_owned()
@@ -135,6 +146,7 @@ fn normalize(raw: RawEcosystem) -> EcosystemSnapshot {
     };
     EcosystemSnapshot {
         tools,
+        repos,
         live,
         degraded_reason,
     }
@@ -229,6 +241,18 @@ mod tests {
         assert!(wire.get("className").is_some());
         assert!(wire.get("sideEffects").is_some());
         assert!(wire.get("dataClasses").is_some());
+    }
+
+    #[test]
+    fn normalize_wires_first_class_repo_nodes() {
+        let snapshot = normalize(raw_from(json!({
+            "tools": [
+                { "name": "t", "className": "x", "conformance": "C1", "sideEffects": "none", "repo": "JMCP" }
+            ]
+        })));
+        assert_eq!(snapshot.repos.len(), 1, "repo node derived from tool tag");
+        assert_eq!(snapshot.repos[0].name, "JMCP");
+        assert_eq!(snapshot.repos[0].tool_count, 1);
     }
 
     #[test]
