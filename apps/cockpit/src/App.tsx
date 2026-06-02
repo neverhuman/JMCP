@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Archive,
-  Database,
   FileCheck2,
   Gauge,
   GitBranch,
   History,
   Layers3,
+  Network,
   ShieldAlert,
 } from "lucide-react";
 import { views } from "./fixtures";
@@ -15,11 +15,12 @@ import { createFixtureRuntime, hasValidEventBatch, loadRuntime, type RuntimeStat
 import {
   ApprovalsView,
   EvidenceView,
-  MemoryLiteView,
+  MemoryView,
   NowView,
   ReplayView,
   SystemsView,
-  ToolsDataView,
+  UniverseView,
+  VoiceTextView,
   WorkView,
 } from "./views";
 import type { ViewId } from "./types";
@@ -31,8 +32,9 @@ const icons = {
   work: GitBranch,
   evidence: FileCheck2,
   systems: Layers3,
-  "tools-data": Database,
-  "memory-lite": Archive,
+  universe: Network,
+  memory: Archive,
+  "voice-text": Activity,
   replay: History,
   approvals: ShieldAlert,
 };
@@ -152,8 +154,9 @@ function App() {
           {activeView === "work" && <WorkView workItems={runtime.workItems} />}
           {activeView === "evidence" && <EvidenceView evidenceBundles={runtime.evidenceBundles} />}
           {activeView === "systems" && <SystemsView systems={runtime.systems} />}
-          {activeView === "tools-data" && <ToolsDataView runtime={runtime} />}
-          {activeView === "memory-lite" && <MemoryLiteView />}
+          {activeView === "universe" && <UniverseView runtime={runtime} />}
+          {activeView === "memory" && <MemoryView memoryLessons={runtime.memoryLessons} />}
+          {activeView === "voice-text" && <VoiceTextView voiceThreads={runtime.voiceThreads} />}
           {activeView === "replay" && <ReplayView replayEvents={runtime.replayEvents} />}
           {activeView === "approvals" && <ApprovalsView approvalRequests={runtime.approvalRequests} />}
         </section>

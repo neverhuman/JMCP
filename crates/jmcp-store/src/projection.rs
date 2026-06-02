@@ -1,7 +1,8 @@
 use crate::StoreResult;
 use chrono::Utc;
 use jmcp_domain::{
-    AdapterHealth, Approval, ApprovalChallenge, EffectLedgerEntry, Evidence, Lease, WorkOrder,
+    AdapterHealth, Approval, ApprovalChallenge, AttentionPacket, EffectLedgerEntry, Evidence,
+    IncidentRecord, InventoryCard, Lease, MemoryRecord, PromotionDecision, VoiceSession, WorkOrder,
 };
 use rusqlite::{params, Connection};
 use serde_json::Value;
@@ -17,6 +18,12 @@ pub(crate) struct ReplayProjection {
     pub(crate) evidence: Vec<(Option<Uuid>, Evidence)>,
     pub(crate) adapter_health: Vec<AdapterHealth>,
     pub(crate) effects: Vec<EffectLedgerEntry>,
+    pub(crate) voice_sessions: Vec<VoiceSession>,
+    pub(crate) attention_packets: Vec<AttentionPacket>,
+    pub(crate) memory_records: Vec<MemoryRecord>,
+    pub(crate) inventory_cards: Vec<InventoryCard>,
+    pub(crate) promotion_decisions: Vec<PromotionDecision>,
+    pub(crate) incident_records: Vec<IncidentRecord>,
 }
 
 pub(crate) fn append_event_on(
@@ -166,6 +173,21 @@ pub(crate) fn project_effect_on(
             data.to_string(),
             effect.recorded_at.to_rfc3339(),
         ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn project_control_plane_on(
+    conn: &Connection,
+    id: Uuid,
+    kind: &str,
+    data: &Value,
+    updated_at: &str,
+) -> StoreResult<()> {
+    conn.execute(
+        "insert into control_plane_records (id, kind, data, updated_at) values (?1, ?2, ?3, ?4)
+         on conflict(id) do update set kind=excluded.kind, data=excluded.data, updated_at=excluded.updated_at",
+        params![id.to_string(), kind, data.to_string(), updated_at],
     )?;
     Ok(())
 }

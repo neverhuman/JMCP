@@ -1,0 +1,20 @@
+[package]
+name = "jmcp-adapter-jailgun"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+hex.workspace = true
+jmcp-adapter-sdk = { path = "../jmcp-adapter-sdk" }
+jmcp-domain = { path = "../jmcp-domain" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true

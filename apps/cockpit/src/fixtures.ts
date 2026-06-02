@@ -1,4 +1,5 @@
 import type {
+  AttentionPacket,
   ApprovalRequest,
   EvidenceBundle,
   MemoryProposal,
@@ -6,16 +7,18 @@ import type {
   SystemNode,
   ToolAsset,
   ViewDefinition,
+  VoiceTextThread,
   WorkItem,
 } from "./types";
 
 export const views: ViewDefinition[] = [
-  { id: "now", label: "Now", description: "Attention packet, live risk, and throughput." },
+  { id: "now", label: "Now", description: "Attention inbox, live risk, and throughput." },
+  { id: "voice-text", label: "Voice/Text", description: "Conversation turns, transcripts, and confirmations." },
   { id: "work", label: "Work", description: "Governed tasks, leases, and task state." },
   { id: "evidence", label: "Evidence", description: "Proof bundles accepted before promotion." },
   { id: "systems", label: "Systems", description: "JCP-speaking services and adapters." },
-  { id: "tools-data", label: "Tools/Data", description: "Capability graph and governed assets." },
-  { id: "memory-lite", label: "Memory-lite", description: "Scoped lessons awaiting promotion." },
+  { id: "universe", label: "Universe", description: "Jeryu coverage, repo scores, and placement rows." },
+  { id: "memory", label: "Memory", description: "Scoped lessons, promotion gates, and incidents." },
   { id: "replay", label: "Replay", description: "JPCM stream reconstruction and audit trail." },
   { id: "approvals", label: "Approvals", description: "Decisions that require user authority." },
 ];
@@ -30,6 +33,8 @@ export const workItems: WorkItem[] = [
     lease: "write:crates/jcp-core",
     updated: "2m ago",
     evidence: 5,
+    repo: "Jeryu",
+    branch: "main",
   },
   {
     id: "WO-1043",
@@ -40,6 +45,8 @@ export const workItems: WorkItem[] = [
     lease: "read-only",
     updated: "9m ago",
     evidence: 2,
+    repo: "Jekko",
+    branch: "jmcp/bridge-quarantine",
   },
   {
     id: "WO-1044",
@@ -50,6 +57,8 @@ export const workItems: WorkItem[] = [
     lease: "lesson-proposal",
     updated: "14m ago",
     evidence: 3,
+    repo: "Jankurai",
+    branch: "policy/replay-ratchet",
   },
 ];
 
@@ -81,10 +90,52 @@ export const evidenceBundles: EvidenceBundle[] = [
 ];
 
 export const systems: SystemNode[] = [
-  { name: "jmcpd", role: "authority kernel", health: "nominal", jcp: "1.0.0", latency: "18ms" },
-  { name: "jeryu", role: "evidence runner", health: "watch", jcp: "1.0.0", latency: "42ms" },
-  { name: "jankurai", role: "standards memory", health: "nominal", jcp: "1.0.0", latency: "25ms" },
-  { name: "mcp-bridge", role: "quarantined adapter", health: "blocked", jcp: "adapter", latency: "n/a" },
+  {
+    name: "jmcpd",
+    role: "authority kernel",
+    health: "nominal",
+    jcp: "1.0.0",
+    latency: "18ms",
+    incident: {
+      title: "Live control plane healthy",
+      summary: "Core routing and replay are online.",
+      quarantine: "None",
+      drilldown: ["Open replay ledger", "Inspect approval challenges"],
+    },
+  },
+  {
+    name: "jeryu",
+    role: "evidence runner",
+    health: "watch",
+    jcp: "1.0.0",
+    latency: "42ms",
+    incident: {
+      title: "Evidence refresh lagging",
+      summary: "A late evidence bundle keeps the tool graph in watch mode.",
+      quarantine: "Read-only until the next evidence pass lands.",
+      drilldown: ["Open ecosystem graph", "Inspect evidence bundle EV-732"],
+    },
+  },
+  {
+    name: "jankurai",
+    role: "standards memory",
+    health: "nominal",
+    jcp: "1.0.0",
+    latency: "25ms",
+  },
+  {
+    name: "mcp-bridge",
+    role: "quarantined adapter",
+    health: "blocked",
+    jcp: "adapter",
+    latency: "n/a",
+    incident: {
+      title: "Write lease withheld",
+      summary: "The bridge stays blocked until it has a service card and evidence bundle.",
+      quarantine: "Keep it read-only.",
+      drilldown: ["Open work order WO-1043", "Open adapter service card"],
+    },
+  },
 ];
 
 export const toolAssets: ToolAsset[] = [
@@ -162,27 +213,145 @@ export const toolAssets: ToolAsset[] = [
   },
 ];
 
-export const memoryProposals: MemoryProposal[] = [
+export const attentionPackets: AttentionPacket[] = [
+  {
+    id: "AP-88",
+    workOrderId: "WO-1043",
+    attentionLevel: "incident",
+    modality: "ui-card",
+    summary: "Quarantine the bridge until the service card lands.",
+    whyNow: "The adapter still lacks an evidence-backed write lease.",
+    recommendation: "Keep the bridge read-only and collect the missing evidence first.",
+    decisionNeeded: true,
+    alternatives: [
+      { id: "alt-1", label: "Keep read-only", effect: "limits blast radius", risk: "low" },
+      { id: "alt-2", label: "Promote a narrower lease", effect: "still requires evidence", risk: "medium" },
+    ],
+    riskDelta: { from: "low", to: "high", note: "promoting early increases write exposure" },
+    drilldown: [
+      { label: "Open WO-1043", target: "work.WO-1043", kind: "work-order" },
+      { label: "Open adapter card", target: "tools-data.jeryu.repo.adopt", kind: "tool-card" },
+    ],
+    expires: "6m",
+    incident: {
+      id: "INC-1043",
+      title: "Adapter quarantine remains active",
+      severity: "high",
+      summary: "The bridge lacks a complete service card and should not gain writes.",
+      quarantine: "Read-only until evidence is complete.",
+      drilldown: ["Open work order WO-1043", "Open evidence bundle EV-732"],
+    },
+  },
+  {
+    id: "AP-89",
+    workOrderId: "WO-1044",
+    attentionLevel: "decision",
+    modality: "notification",
+    summary: "Convert the replay incident into a reusable policy test.",
+    whyNow: "The incident is fresh enough to encode a deterministic guardrail.",
+    recommendation: "Promote the lesson after replay parity is verified.",
+    decisionNeeded: false,
+    alternatives: [
+      { id: "alt-3", label: "Keep as shadow memory", effect: "wait for more evidence", risk: "low" },
+      { id: "alt-4", label: "Promote now", effect: "teaches the policy kernel", risk: "medium" },
+    ],
+    riskDelta: { from: "medium", to: "low", note: "promotion lowers repeat incident risk" },
+    drilldown: [{ label: "Open memory proposal", target: "memory.ML-220", kind: "memory" }],
+    expires: "22m",
+  },
+];
+
+export const voiceTextThreads: VoiceTextThread[] = [
+  {
+    id: "VT-41",
+    channel: "voice",
+    speaker: "telegram:user:42",
+    title: "Approve deployment request",
+    state: "confirmed",
+    confidence: 0.97,
+    transcript: "approve the deployment with token alpha",
+    intent: "approval",
+    confirmationPhrase: "alpha",
+    requiresResponse: true,
+    decisionOptions: ["approve", "deny"],
+    updated: "2m ago",
+    sourceRef: "voice.session.11111111-1111-4111-8111-111111111111",
+  },
+  {
+    id: "VT-42",
+    channel: "text",
+    speaker: "telegram:user:42",
+    title: "Deny bridge write lease",
+    state: "transcribed",
+    confidence: 0.93,
+    transcript: "deny the bridge write lease",
+    intent: "reject",
+    requiresResponse: true,
+    decisionOptions: ["deny", "approve"],
+    updated: "11m ago",
+    sourceRef: "voice.session.11111111-1111-4111-8111-111111111112",
+  },
+];
+
+export const memoryLessons: MemoryProposal[] = [
   {
     id: "ML-219",
-    lesson: "Adapters that emit raw webhooks must be quarantined until wrapped in JCP envelopes.",
     scope: "adapter conformance",
-    status: "proposed",
+    claim: "Adapters that emit raw webhooks stay quarantined until wrapped in JCP envelopes.",
+    state: "proposed",
     confidence: 92,
+    retention: "project",
+    expiry: "7d",
+    promotion: {
+      status: "shadow",
+      gate: "replay and evidence review",
+    },
+    counterexamples: [
+      "Direct webhook handlers bypass policy.",
+      "Silent retries can duplicate side effects.",
+    ],
+    source: "conformance.report",
+    rollback: "Hold the adapter in read-only mode until the policy gate passes.",
+    incident: {
+      title: "Adapter quarantine still required",
+      summary: "The bridge remains read-only until it has a service card.",
+      quarantine: "Read-only",
+      drilldown: ["Open adapter card", "Open replay evidence"],
+    },
   },
   {
     id: "ML-220",
-    lesson: "Evidence gates need independent replay checks for schema promotion tasks.",
     scope: "release policy",
-    status: "shadow",
+    claim: "Evidence gates need independent replay checks for schema promotion tasks.",
+    state: "shadow",
     confidence: 81,
+    retention: "long",
+    expiry: "14d",
+    promotion: {
+      status: "proposed",
+      gate: "advisory floor above threshold",
+      reviewedBy: "jankurai",
+    },
+    counterexamples: ["A green smoke test is not enough without replay parity."],
+    source: "replay.checkpoint",
+    rollback: "Keep the lesson shadowed until replay parity proves the claim.",
   },
   {
     id: "ML-221",
-    lesson: "Direct credential access inside workers is a policy violation even when tests pass.",
     scope: "authority kernel",
-    status: "promoted",
+    claim: "Direct credential access inside workers remains a policy violation even when tests pass.",
+    state: "promoted",
     confidence: 98,
+    retention: "long",
+    expiry: "never",
+    promotion: {
+      status: "promoted",
+      gate: "security review",
+      promotedAt: "20m ago",
+    },
+    counterexamples: ["User-visible success does not override policy."],
+    source: "security.finding",
+    rollback: "This rule stays promoted and should not be removed.",
   },
 ];
 
@@ -213,6 +382,7 @@ export const replayEvents: ReplayEvent[] = [
 export const approvalRequests: ApprovalRequest[] = [
   {
     id: "AP-88",
+    challengeId: "AP-88",
     workOrderId: "WO-1043",
     channel: "telegram",
     state: "pending",
@@ -220,9 +390,26 @@ export const approvalRequests: ApprovalRequest[] = [
     reason: "The bridge lacks C1 service-card evidence.",
     risk: "high",
     expires: "6m",
+    approver: "telegram:user:42",
+    tokenHash: "sha256:bridge-alpha",
+    targetUserId: 42,
+    targetChatId: 99,
+    workOrderTitle: "Quarantine the MCP bridge until the service card is complete",
+    workOrderState: "blocked",
+    workOrderOwner: "adapter/mcp",
+    currentTask: "Quarantine the MCP bridge until the service card is complete",
+    branch: "jmcp/bridge-quarantine",
+    pool: "telegram bot",
+    placement: "jmcpd",
+    voiceThreadId: "VT-41",
+    voiceThreadState: "confirmed",
+    voiceTranscript: "approve the deployment with token alpha",
+    voiceConfirmationPhrase: "alpha",
+    lineage: ["challenge.AP-88", "work.WO-1043", "voice.VT-41"],
   },
   {
     id: "AP-89",
+    challengeId: "AP-89",
     workOrderId: "ML-221",
     channel: "local",
     state: "pending",
@@ -230,5 +417,15 @@ export const approvalRequests: ApprovalRequest[] = [
     reason: "Lesson affects authority policy across all workers.",
     risk: "medium",
     expires: "22m",
+    approver: "jankurai",
+    tokenHash: "sha256:memory-221",
+    workOrderTitle: "Promote memory lesson ML-221",
+    workOrderState: "shadow",
+    workOrderOwner: "jankurai",
+    currentTask: "Promote memory lesson ML-221",
+    branch: "policy/replay-ratchet",
+    pool: "local",
+    placement: "jmcpd",
+    lineage: ["challenge.AP-89", "work.ML-221"],
   },
 ];

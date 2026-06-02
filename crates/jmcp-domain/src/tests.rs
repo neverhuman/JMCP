@@ -105,3 +105,43 @@ fn expired_challenge_is_marked_expired() {
     );
     assert_eq!(challenge.state, ApprovalChallengeState::Expired);
 }
+
+#[test]
+fn control_plane_records_serialize_in_camel_case() {
+    let session = VoiceSession {
+        id: Uuid::new_v4(),
+        work_order_id: None,
+        channel: "voice".to_owned(),
+        transcript: "approve".to_owned(),
+        confidence: 0.9,
+        candidate: VoiceCandidate {
+            decision: ApprovalDecision::Approved,
+            risk: VoiceRiskLevel::High,
+            confirmation_token: Some("alpha".to_owned()),
+        },
+        confirmation_evidence: Vec::new(),
+        state: VoiceSessionState::Confirmed,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+    let decision = PromotionDecision {
+        id: Uuid::new_v4(),
+        target_kind: "tool_card".to_owned(),
+        target_name: "jmcpd.submit".to_owned(),
+        gate: "approval".to_owned(),
+        verdict: PromotionVerdict::Promoted,
+        verifier: "ops".to_owned(),
+        rollback_plan: "disable route".to_owned(),
+        evidence_count: 1,
+        created_at: Utc::now(),
+        decided_at: Utc::now(),
+    };
+
+    let session_json = serde_json::to_value(session).unwrap();
+    let decision_json = serde_json::to_value(decision).unwrap();
+
+    assert!(session_json.get("workOrderId").is_some());
+    assert!(session_json.get("createdAt").is_some());
+    assert!(decision_json.get("targetKind").is_some());
+    assert!(decision_json.get("decidedAt").is_some());
+}

@@ -9,6 +9,7 @@ use jmcp_approval_telegram::{
 };
 use jmcp_domain::{ApprovalDecision, WorkOrder};
 use jmcp_store::SqliteStore;
+use serde_json::json;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -59,12 +60,28 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             if let Err(err) = telegram_poll_loop(config, telegram_state, telegram_offset_file).await
             {
-                eprintln!("telegram runtime stopped: {err}");
+                emit_structured_event(
+                    "error",
+                    "runtime.stopped",
+                    json!({
+                        "component": "telegram",
+                        "reason": "poll_loop_failed",
+                        "error": err.to_string(),
+                    }),
+                );
             }
         });
     }
     let listener = tokio::net::TcpListener::bind(args.listen).await?;
-    println!("jmcpd listening on http://{}", listener.local_addr()?);
+    emit_structured_event(
+        "info",
+        "runtime.started",
+        json!({
+            "listen": listener.local_addr()?.to_string(),
+            "database": args.database,
+            "telegramPoll": args.telegram_poll,
+        }),
+    );
     axum::serve(listener, router(state)).await?;
     Ok(())
 }
@@ -80,7 +97,15 @@ async fn telegram_poll_loop(
         let updates = match client.get_updates(offset, 25).await {
             Ok(updates) => updates,
             Err(_) => {
-                eprintln!("telegram getUpdates failed; retrying");
+                emit_structured_event(
+                    "warn",
+                    "telegram.poll.failed",
+                    json!({
+                        "operation": "getUpdates",
+                        "offset": offset,
+                        "retryInSeconds": 5,
+                    }),
+                );
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
@@ -88,17 +113,39 @@ async fn telegram_poll_loop(
         for update in updates {
             let next_offset = update.update_id + 1;
             if persist_telegram_offset(&offset_file, next_offset).is_err() {
-                eprintln!("telegram offset persistence failed; retrying");
+                emit_structured_event(
+                    "error",
+                    "telegram.offset.persist.failed",
+                    json!({
+                        "updateId": update.update_id,
+                        "nextOffset": next_offset,
+                    }),
+                );
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 break;
             }
+            emit_structured_event(
+                "info",
+                "telegram.offset.persisted",
+                json!({
+                    "updateId": update.update_id,
+                    "offset": next_offset,
+                }),
+            );
             offset = Some(next_offset);
             if let Some(message) = update.message {
                 if handle_telegram_message(&client, &state, message)
                     .await
                     .is_err()
                 {
-                    eprintln!("telegram message handling failed");
+                    emit_structured_event(
+                        "error",
+                        "telegram.message.failed",
+                        json!({
+                            "updateId": update.update_id,
+                            "operation": "handleMessage",
+                        }),
+                    );
                 }
             }
         }
@@ -156,6 +203,15 @@ async fn handle_telegram_message(
                 "JMCP commands: /submit <subject> <kind> <json>, /status <work_order_id>, /approve <token>, /deny <token>.",
             )
             .await?;
+        emit_structured_event(
+            "info",
+            "telegram.message.handled",
+            json!({
+                "action": "help",
+                "chatId": message.chat.id,
+                "userId": user.id,
+            }),
+        );
         return Ok(());
     }
 
@@ -190,14 +246,45 @@ async fn handle_telegram_message(
                         &format!("JMCP work order submitted: {}\n{prompt}", work_order.id),
                     )
                     .await?;
+                emit_structured_event(
+                    "info",
+                    "telegram.message.handled",
+                    json!({
+                        "action": "submit",
+                        "chatId": message.chat.id,
+                        "userId": user.id,
+                        "workOrderId": work_order.id,
+                        "result": "accepted",
+                    }),
+                );
             }
             Err(err) => {
-                eprintln!("telegram submit rejected");
                 let message_text = if err.downcast_ref::<serde_json::Error>().is_some() {
                     "JMCP submit rejected: malformed JSON payload."
                 } else {
                     "JMCP submit rejected; check subject, kind, and payload."
                 };
+                emit_structured_event(
+                    "warn",
+                    "telegram.submit.rejected",
+                    json!({
+                        "action": "submit",
+                        "chatId": message.chat.id,
+                        "userId": user.id,
+                        "result": "rejected",
+                        "reason": message_text,
+                    }),
+                );
+                emit_structured_event(
+                    "info",
+                    "telegram.message.handled",
+                    json!({
+                        "action": "submit",
+                        "chatId": message.chat.id,
+                        "userId": user.id,
+                        "result": "rejected",
+                    }),
+                );
                 client.send_message(message.chat.id, message_text).await?;
             }
         }
@@ -210,6 +297,15 @@ async fn handle_telegram_message(
             Err(_) => "JMCP status rejected: invalid work order id.".to_owned(),
         };
         client.send_message(message.chat.id, &response).await?;
+        emit_structured_event(
+            "info",
+            "telegram.message.handled",
+            json!({
+                "action": "status",
+                "chatId": message.chat.id,
+                "userId": user.id,
+            }),
+        );
         return Ok(());
     }
 
@@ -222,6 +318,15 @@ async fn handle_telegram_message(
             ApprovalDecision::Approved,
         );
         client.send_message(message.chat.id, &response).await?;
+        emit_structured_event(
+            "info",
+            "telegram.message.handled",
+            json!({
+                "action": "approve",
+                "chatId": message.chat.id,
+                "userId": user.id,
+            }),
+        );
         return Ok(());
     }
 
@@ -234,8 +339,40 @@ async fn handle_telegram_message(
             ApprovalDecision::Rejected,
         );
         client.send_message(message.chat.id, &response).await?;
+        emit_structured_event(
+            "info",
+            "telegram.message.handled",
+            json!({
+                "action": "deny",
+                "chatId": message.chat.id,
+                "userId": user.id,
+            }),
+        );
     }
     Ok(())
+}
+
+fn emit_structured_event(level: &str, event: &str, fields: serde_json::Value) {
+    let record = structured_event_record(level, event, fields);
+    match level {
+        "error" => eprintln!("{}", record),
+        _ => println!("{}", record),
+    }
+}
+
+fn structured_event_record(
+    level: &str,
+    event: &str,
+    fields: serde_json::Value,
+) -> serde_json::Value {
+    serde_json::json!({
+        "eventId": uuid::Uuid::new_v4(),
+        "event": event,
+        "level": level,
+        "component": "jmcpd",
+        "timestamp": chrono::Utc::now(),
+        "fields": fields,
+    })
 }
 
 fn submit_from_telegram(

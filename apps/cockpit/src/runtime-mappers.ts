@@ -1,5 +1,39 @@
-import type { ApiAdapters, ApiApproval, ApiApprovalChallenge, ApiEvidence, ApiReplay, ApiWorkOrder } from "./runtime-api";
-import type { ApprovalRequest, EvidenceBundle, ReplayEvent, ToolAsset, WorkItem } from "./types";
+import type {
+  ApiAdapters,
+  ApiApproval,
+  ApiApprovalChallenge,
+  ApiAttentionPacket,
+  ApiEvidence,
+  ApiMemoryProposal,
+  ApiReplay,
+  ApiUniverse,
+  ApiVoiceThread,
+  ApiWorkOrder,
+} from "./runtime-api";
+import type {
+  AttentionAlternative,
+  AttentionIncident,
+  AttentionPacket,
+  ApprovalRequest,
+  EvidenceBundle,
+  DrilldownRef,
+  MemoryIncident,
+  MemoryProposal,
+  MemoryPromotion,
+  ReplayEvent,
+  UniverseSnapshot,
+  ToolAsset,
+  VoiceTextThread,
+  WorkItem,
+} from "./types";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
 
 export function mapWorkOrder(workOrder: ApiWorkOrder): WorkItem {
   const owner = workOrder.subject.split("/")[1] ?? "jmcp";
@@ -13,6 +47,8 @@ export function mapWorkOrder(workOrder: ApiWorkOrder): WorkItem {
     lease: state === "submitted" ? "lease required" : "lease active",
     updated: formatAge(workOrder.updated_at),
     evidence: workOrder.evidence.length,
+    repo: repoFromPayload(workOrder.task.payload) ?? repoFromSubject(workOrder.subject),
+    branch: branchFromPayload(workOrder.task.payload),
   };
 }
 
@@ -50,9 +86,67 @@ export function mapReplay(replay: ApiReplay): ReplayEvent[] {
   }));
 }
 
+export function mapAttentionPacket(packet: ApiAttentionPacket): AttentionPacket {
+  return {
+    id: packet.attention_packet_id,
+    workOrderId: packet.work_order_id,
+    attentionLevel: packet.attention_level,
+    modality: packet.modality,
+    summary: packet.user_visible_summary,
+    whyNow: packet.why_now ?? packet.user_visible_summary,
+    recommendation: packet.recommendation,
+    decisionNeeded: packet.decision_needed,
+    alternatives: (packet.options ?? packet.alternatives ?? []).map(mapAttentionAlternative),
+    riskDelta: packet.risk_delta ?? {
+      from: "medium",
+      to: "medium",
+      note: "No risk delta supplied.",
+    },
+    drilldown: (packet.drilldown_refs ?? []).map(mapDrilldownRef),
+    expires: packet.expires_at ? formatUntil(packet.expires_at) : "open",
+    incident: packet.incident ? mapAttentionIncident(packet.incident) : undefined,
+  };
+}
+
+export function mapVoiceThread(thread: ApiVoiceThread): VoiceTextThread {
+  return {
+    id: thread.interaction_id,
+    channel: thread.channel,
+    speaker: thread.speaker_id,
+    title: thread.title,
+    state: thread.voice_state ?? "draft",
+    confidence: thread.confidence ?? 0,
+    transcript: thread.transcript ?? thread.message ?? "",
+    intent: thread.intent,
+    confirmationPhrase: thread.confirmation_phrase ?? undefined,
+    requiresResponse: thread.requires_response,
+    decisionOptions: thread.decision_options ?? [],
+    updated: formatAgeOrLiteral(thread.updated_at),
+    sourceRef: thread.source_ref,
+  };
+}
+
+export function mapMemoryProposal(proposal: ApiMemoryProposal): MemoryProposal {
+  return {
+    id: proposal.memory_id,
+    scope: proposal.scope,
+    claim: proposal.claim,
+    state: proposal.lesson_state,
+    confidence: proposal.confidence,
+    retention: proposal.retention,
+    expiry: formatUntilOrLiteral(proposal.expiry),
+    promotion: mapMemoryPromotion(proposal.promotion),
+    counterexamples: proposal.counterexamples,
+    source: proposal.source,
+    rollback: proposal.rollback,
+    incident: proposal.incident ? mapMemoryIncident(proposal.incident) : undefined,
+  };
+}
+
 export function mapApproval(approval: ApiApproval): ApprovalRequest {
   return {
     id: approval.work_order_id,
+    challengeId: approval.work_order_id,
     workOrderId: approval.work_order_id,
     channel: "local",
     state: approval.decision ? approval.decision.toLowerCase() : "pending",
@@ -60,13 +154,29 @@ export function mapApproval(approval: ApiApproval): ApprovalRequest {
     reason: "JMCP approval gate",
     risk: "medium",
     expires: formatUntil(approval.expires_at),
+    approver: approval.approver,
+    tokenHash: `sha256:${approval.work_order_id.slice(0, 12)}`,
+    workOrderTitle: "Local approval",
+    workOrderState: "pending",
+    workOrderOwner: approval.approver,
+    currentTask: "local approval",
+    branch: "unobserved",
+    pool: "local",
+    placement: "jmcpd",
+    lineage: [`approval.${approval.work_order_id}`],
   };
 }
 
-export function mapApprovalChallenge(challenge: ApiApprovalChallenge): ApprovalRequest {
+export function mapApprovalChallenge(
+  challenge: ApiApprovalChallenge,
+  context?: { workOrder?: WorkItem; approval?: ApiApproval; voiceThread?: VoiceTextThread },
+): ApprovalRequest {
   const state = challenge.state.toLowerCase();
+  const workOrder = context?.workOrder;
+  const voiceThread = context?.voiceThread;
   return {
     id: challenge.id,
+    challengeId: challenge.id,
     workOrderId: challenge.work_order_id,
     channel: challenge.channel,
     state,
@@ -74,6 +184,38 @@ export function mapApprovalChallenge(challenge: ApiApprovalChallenge): ApprovalR
     reason: approvalChallengeReason(challenge),
     risk: riskForApprovalState(state),
     expires: formatUntil(challenge.expires_at),
+    approver: challenge.approver,
+    tokenHash: challenge.token_hash,
+    targetUserId: challenge.target_user_id ?? undefined,
+    targetChatId: challenge.target_chat_id ?? undefined,
+    workOrderTitle: workOrder?.title ?? "unobserved",
+    workOrderState: workOrder?.state ?? "unobserved",
+    workOrderOwner: workOrder?.owner ?? "unobserved",
+    currentTask: workOrder?.title ?? "unobserved",
+    branch: workOrder?.branch ?? "unobserved",
+    pool: workOrder?.owner ?? "unassigned",
+    placement: workOrder?.owner ?? "unplaced",
+    voiceThreadId: voiceThread?.id,
+    voiceThreadState: voiceThread?.state,
+    voiceTranscript: voiceThread?.transcript,
+    voiceConfirmationPhrase: voiceThread?.confirmationPhrase,
+    lineage: buildApprovalLineage(challenge, workOrder, voiceThread, context?.approval),
+  };
+}
+
+export function mapUniverse(universe: ApiUniverse): UniverseSnapshot {
+  return {
+    live: universe.live,
+    bootstrapTui: {
+      live: universe.bootstrapTui.live,
+      observedCoverage: universe.bootstrapTui.observedCoverage,
+      activeRepos: universe.bootstrapTui.activeRepos,
+      repoScores: universe.bootstrapTui.repoScores,
+      placements: universe.bootstrapTui.placements,
+      degradedSlices: universe.bootstrapTui.degradedSlices,
+      degradedReason: universe.bootstrapTui.degradedReason,
+    },
+    ecosystem: universe.ecosystem,
   };
 }
 
@@ -96,11 +238,72 @@ export function mapAdapters(adapters: ApiAdapters): ToolAsset[] {
   });
 }
 
+function mapAttentionAlternative(alternative: NonNullable<ApiAttentionPacket["alternatives"]>[number]): AttentionAlternative {
+  return {
+    id: alternative.option_id,
+    label: alternative.label,
+    effect: alternative.effect,
+    risk: alternative.risk,
+  };
+}
+
+function mapDrilldownRef(ref: NonNullable<ApiAttentionPacket["drilldown_refs"]>[number]): DrilldownRef {
+  return {
+    label: ref.label,
+    target: ref.target,
+    kind: ref.kind ?? undefined,
+  };
+}
+
+function mapAttentionIncident(incident: NonNullable<ApiAttentionPacket["incident"]>): AttentionIncident {
+  return {
+    id: incident.incident_id,
+    title: incident.title,
+    severity: incident.severity,
+    summary: incident.summary,
+    quarantine: incident.quarantine,
+    drilldown: incident.drilldown,
+  };
+}
+
+function mapMemoryPromotion(promotion: ApiMemoryProposal["promotion"]): MemoryPromotion {
+  return {
+    status: promotion.status,
+    gate: promotion.gate,
+    reviewedBy: promotion.reviewed_by ?? undefined,
+    promotedAt: promotion.promoted_at ? formatAgeOrLiteral(promotion.promoted_at) : undefined,
+  };
+}
+
+function mapMemoryIncident(incident: NonNullable<ApiMemoryProposal["incident"]>): MemoryIncident {
+  return {
+    title: incident.title,
+    summary: incident.summary,
+    quarantine: incident.quarantine,
+    drilldown: incident.drilldown,
+  };
+}
+
 function approvalChallengeReason(challenge: ApiApprovalChallenge) {
   if (challenge.channel === "telegram") {
     return `Telegram user ${challenge.target_user_id ?? "unknown"} in chat ${challenge.target_chat_id ?? "unknown"}`;
   }
   return "Local approval challenge";
+}
+
+function buildApprovalLineage(
+  challenge: ApiApprovalChallenge,
+  workOrder?: WorkItem,
+  voiceThread?: VoiceTextThread,
+  approval?: ApiApproval,
+) {
+  return [
+    `challenge.${challenge.id}`,
+    `work.${challenge.work_order_id}`,
+    workOrder ? `task.${workOrder.title}` : "task.unobserved",
+    approval?.decision ? `decision.${approval.decision.toLowerCase()}` : "decision.pending",
+    voiceThread ? `voice.${voiceThread.id}` : "voice.unobserved",
+  ];
 }
 
 function riskForApprovalState(state: string): "low" | "medium" | "high" {
@@ -117,16 +320,45 @@ function titleCase(value: string) {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
+function branchFromPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const branch = payload.branch ?? payload.repo_branch ?? payload.repoBranch ?? payload.git_branch ?? payload.gitBranch;
+  return isString(branch) ? branch : undefined;
+}
+
+function repoFromPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const repo = payload.repo ?? payload.repository ?? payload.provider;
+  return isString(repo) ? repo : undefined;
+}
+
+function repoFromSubject(subject: string) {
+  const parts = subject.split("/");
+  if (parts.length > 1 && parts[1]) {
+    return titleCase(parts[1]);
+  }
+  return undefined;
+}
+
 function formatAge(value: string) {
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) {
-    return "live";
+    return value;
   }
   const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
   if (seconds < 60) {
     return `${seconds}s ago`;
   }
   return `${Math.round(seconds / 60)}m ago`;
+}
+
+function formatAgeOrLiteral(value: string) {
+  const formatted = formatAge(value);
+  return formatted === value ? value : formatted;
 }
 
 function formatUntil(value: string) {
@@ -142,4 +374,9 @@ function formatUntil(value: string) {
     return `${seconds}s`;
   }
   return `${Math.round(seconds / 60)}m`;
+}
+
+function formatUntilOrLiteral(value: string) {
+  const formatted = formatUntil(value);
+  return formatted === "unknown" ? value : formatted;
 }

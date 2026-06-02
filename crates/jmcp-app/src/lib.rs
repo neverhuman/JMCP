@@ -2,13 +2,15 @@
 mod tests;
 
 mod approval_flow;
+mod control_plane;
 mod runtime_health;
 
 use jcp_core::{Envelope, LocalSigner};
 use jmcp_attention::{AttentionPolicy, DefaultAttentionPolicy};
 use jmcp_domain::{
-    AdapterHealth, Approval, ApprovalChallenge, DomainError, Evidence, HealthLevel, Lease,
-    ReplayCheckpoint, ServiceCard, SystemStatus, WorkOrder,
+    AdapterHealth, Approval, ApprovalChallenge, AttentionPacket, DomainError, Evidence,
+    HealthLevel, IncidentRecord, Lease, MemoryRecord, ReplayCheckpoint, ServiceCard, SystemStatus,
+    WorkOrder,
 };
 use jmcp_store::{SqliteStore, StoreError, StoredEvent};
 use runtime_health::{command_available, jeryu_health};
@@ -20,6 +22,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub use approval_flow::{local_actor, telegram_actor, telegram_approver};
+pub use control_plane::{
+    attention_inbox_sample, incident_records_sample, inventory_cards_sample, memory_records_sample,
+    promotion_decisions_sample, voice_sessions_sample,
+};
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -128,6 +134,10 @@ impl AppState {
 
     pub fn list_evidence(&self) -> AppResult<Vec<Evidence>> {
         Ok(self.store.lock().expect("store lock").list_evidence()?)
+    }
+
+    pub fn attention_packets(&self) -> AppResult<Vec<AttentionPacket>> {
+        self.attention_inbox()
     }
 
     pub fn list_adapter_health(&self) -> AppResult<Vec<AdapterHealth>> {
@@ -239,5 +249,13 @@ impl AppState {
 
     pub fn events_after(&self, after: i64) -> AppResult<Vec<StoredEvent>> {
         Ok(self.store.lock().expect("store lock").events_after(after)?)
+    }
+
+    pub fn incidents(&self) -> AppResult<Vec<IncidentRecord>> {
+        self.incident_records()
+    }
+
+    pub fn memory_proposals(&self) -> AppResult<Vec<MemoryRecord>> {
+        self.memory_records()
     }
 }

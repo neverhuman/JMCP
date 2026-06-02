@@ -4,6 +4,7 @@ use jcp_core::Subject;
 use jmcp_domain::{ApprovalChallengeState, ApprovalDecision, WorkOrderStatus};
 use serde_json::json;
 use std::str::FromStr;
+use uuid::Uuid;
 
 fn state_with_work_order() -> (AppState, WorkOrder) {
     let state = AppState::new(SqliteStore::in_memory().unwrap());
@@ -115,4 +116,46 @@ fn expired_token_is_marked_expired() {
         state.list_approval_challenges().unwrap()[0].state,
         ApprovalChallengeState::Expired
     );
+}
+
+#[test]
+fn blank_control_plane_surfaces_use_deterministic_samples() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+
+    assert_eq!(
+        state.voice_sessions().unwrap()[0].id,
+        Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap()
+    );
+    assert_eq!(
+        state.attention_inbox().unwrap()[0].id,
+        Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap()
+    );
+    assert_eq!(
+        state.memory_records().unwrap()[0].id,
+        Uuid::parse_str("44444444-4444-4444-8444-444444444441").unwrap()
+    );
+    assert_eq!(
+        state.inventory_cards().unwrap()[0].id,
+        Uuid::parse_str("55555555-5555-4555-8555-555555555551").unwrap()
+    );
+    assert_eq!(
+        state.promotion_decisions().unwrap()[0].id,
+        Uuid::parse_str("66666666-6666-4666-8666-666666666661").unwrap()
+    );
+    assert_eq!(
+        state.incident_records().unwrap()[0].id,
+        Uuid::parse_str("77777777-7777-4777-8777-777777777771").unwrap()
+    );
+}
+
+#[test]
+fn voice_sessions_fall_back_to_samples_and_persist_intake() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+    assert!(!state.voice_sessions().unwrap().is_empty());
+    let session = voice_sessions_sample()[0].clone();
+
+    state.record_voice_session(&session).unwrap();
+
+    let sessions = state.voice_sessions().unwrap();
+    assert_eq!(sessions, vec![session]);
 }

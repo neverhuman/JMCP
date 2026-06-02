@@ -318,3 +318,22 @@ fn telegram_offset_persists_and_reads() {
     assert_eq!(read_telegram_offset(&path).unwrap(), Some(42));
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn structured_runtime_events_are_valid_json_and_escape_content() {
+    let record = structured_event_record(
+        "warn",
+        "telegram.submit.rejected",
+        json!({
+            "reason": "bad \"payload\"\nand newline",
+            "chatId": 99,
+        }),
+    );
+    let text = record.to_string();
+    let parsed: Value = serde_json::from_str(&text).unwrap();
+
+    assert_eq!(parsed["event"], "telegram.submit.rejected");
+    assert_eq!(parsed["level"], "warn");
+    assert_eq!(parsed["fields"]["chatId"], 99);
+    assert_eq!(parsed["fields"]["reason"], "bad \"payload\"\nand newline");
+}

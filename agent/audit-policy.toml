@@ -62,6 +62,379 @@ required_fields = [
 ]
 
 [[event_class]]
+name = "user.message.received"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "user.attention.requested"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "user.decision.recorded"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "decision",
+    "timestamp",
+]
+
+[[event_class]]
+name = "attention.candidate"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "attention.packet"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "attention.escalation"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "attention.resolution"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "attention.false_quiet_alarm"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "voice.turn.started"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "voice.turn.transcribed"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "voice.intent.confirmed"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "voice.turn.ended"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "memory.proposed"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "memory.accepted"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "memory.rejected"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "memory.decayed"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "memory.contradiction_detected"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "tool.card.published"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "data.card.published"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "agent.card.published"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "service.card.declared"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "promotion.requested"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "promotion.approved"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "promotion.rejected"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "promotion.revoked"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "tool.call.quarantined"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "tool_build.quarantined"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "policy.lesson.quarantined"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "policy.lesson.promoted"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "incident.opened"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "incident.updated"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "incident.resolved"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "disaster.mode.entered"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
+name = "disaster.mode.exited"
+required_fields = [
+    "event_id",
+    "correlation_id",
+    "actor",
+    "component",
+    "operation",
+    "timestamp",
+]
+
+[[event_class]]
 name = "replay.executed"
 required_fields = [
     "event_id",

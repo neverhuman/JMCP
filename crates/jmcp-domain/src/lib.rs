@@ -5,9 +5,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 mod approvals;
+mod control;
 
 #[cfg(test)]
 mod tests;
+
+pub use control::*;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DomainError {

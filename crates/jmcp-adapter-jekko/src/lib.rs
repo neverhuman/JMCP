@@ -19,10 +19,12 @@ use std::{sync::Arc, time::Duration};
 
 mod config;
 mod worker_run;
+pub mod zyal;
 use config::{
     env_or, DEFAULT_JEKKO_BASE_URL, DEFAULT_JNOCCIO_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT_SECS,
 };
 pub use worker_run::map_worker_outcome;
+pub use zyal::{CliZyalRunner, SubmitOpts, ZyalAdapter, ZyalRunStatus, ZyalRunner};
 
 #[cfg(test)]
 mod tests;

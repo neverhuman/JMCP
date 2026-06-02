@@ -25,7 +25,7 @@ Adapters provide capability at the edge. They may ingest text, produce proposed 
 
 ## Event Model
 
-The in-process event bus is the default backbone for V1 because it keeps local development deterministic and replayable. Events require stable identifiers, correlation identifiers, component names, operation names, and explicit timestamps. Replay must reconstruct decisions and observations without re-issuing non-idempotent side effects.
+The in-process event bus is the default backbone for V1 because it keeps local development deterministic and replayable. Structured runtime/control-plane events include `user.message.received`, `user.attention.requested`, `voice.turn.started`, `voice.turn.transcribed`, `voice.intent.confirmed`, `attention.packet`, `memory.proposed`, `memory.accepted`, `tool.card.published`, `data.card.published`, `agent.card.published`, `service.card.declared`, `incident.opened`, `incident.updated`, `incident.resolved`, and `disaster.mode.entered`. Those records feed the attention inbox, memory promotion path, inventory cards (tool, data, agent, and service cards), and incident/quarantine state. Events require stable identifiers, correlation identifiers, component names, operation names, and explicit timestamps. Replay must reconstruct decisions and observations without re-issuing non-idempotent side effects.
 
 SQLite stores durable state for protocol envelopes, approvals, audit records, adapter observations, and replay checkpoints. The architecture should be able to replace the event bus or database later, but V1 governance treats the embedded defaults as the supported base, not a demo mode.
 
@@ -36,4 +36,3 @@ Mutating operations require an approval gate. Approval requests are first-class 
 ## Failure Model
 
 Failures must preserve enough structure to diagnose without exposing secrets: component, operation, correlation id, diagnostic class, and retryability. Transport errors, validation errors, policy denials, adapter failures, and persistence failures are separate classes.
-

@@ -1,13 +1,14 @@
 use crate::projection::{
     project_adapter_health_on, project_approval_challenge_on, project_approval_on,
-    project_effect_on, project_evidence_on, project_lease_on, project_work_order_on,
-    ReplayProjection,
+    project_control_plane_on, project_effect_on, project_evidence_on, project_lease_on,
+    project_work_order_on, ReplayProjection,
 };
 use crate::{SqliteStore, StoreResult};
 use chrono::Utc;
 use jmcp_domain::{
-    AdapterHealth, Approval, ApprovalChallenge, EffectLedgerEntry, Evidence, Lease,
-    ReplayCheckpoint, WorkOrder,
+    AdapterHealth, Approval, ApprovalChallenge, AttentionPacket, EffectLedgerEntry, Evidence,
+    IncidentRecord, InventoryCard, Lease, MemoryRecord, PromotionDecision, ReplayCheckpoint,
+    VoiceSession, WorkOrder,
 };
 use rusqlite::types::Type;
 use serde::{Deserialize, Serialize};
@@ -98,6 +99,30 @@ impl SqliteStore {
                     let effect: EffectLedgerEntry = serde_json::from_str(&data)?;
                     projection.effects.push(effect);
                 }
+                "voice.session.recorded" => {
+                    let session: VoiceSession = serde_json::from_str(&data)?;
+                    projection.voice_sessions.push(session);
+                }
+                "attention.packet.recorded" => {
+                    let packet: AttentionPacket = serde_json::from_str(&data)?;
+                    projection.attention_packets.push(packet);
+                }
+                "memory.recorded" => {
+                    let record: MemoryRecord = serde_json::from_str(&data)?;
+                    projection.memory_records.push(record);
+                }
+                "inventory.card.recorded" => {
+                    let card: InventoryCard = serde_json::from_str(&data)?;
+                    projection.inventory_cards.push(card);
+                }
+                "promotion.decision.recorded" => {
+                    let decision: PromotionDecision = serde_json::from_str(&data)?;
+                    projection.promotion_decisions.push(decision);
+                }
+                "incident.recorded" => {
+                    let incident: IncidentRecord = serde_json::from_str(&data)?;
+                    projection.incident_records.push(incident);
+                }
                 _ => {}
             }
         }
@@ -114,6 +139,7 @@ impl SqliteStore {
         tx.execute("delete from evidence", [])?;
         tx.execute("delete from adapter_health", [])?;
         tx.execute("delete from effect_ledger", [])?;
+        tx.execute("delete from control_plane_records", [])?;
 
         for work_order in projection.work_orders.values() {
             let data = serde_json::to_value(work_order)?;
@@ -142,6 +168,66 @@ impl SqliteStore {
         for effect in &projection.effects {
             let data = serde_json::to_value(effect)?;
             project_effect_on(&tx, effect, &data)?;
+        }
+        for session in &projection.voice_sessions {
+            let data = serde_json::to_value(session)?;
+            project_control_plane_on(
+                &tx,
+                session.id,
+                "voice_session",
+                &data,
+                &session.updated_at.to_rfc3339(),
+            )?;
+        }
+        for packet in &projection.attention_packets {
+            let data = serde_json::to_value(packet)?;
+            project_control_plane_on(
+                &tx,
+                packet.id,
+                "attention_packet",
+                &data,
+                &packet.updated_at.to_rfc3339(),
+            )?;
+        }
+        for record in &projection.memory_records {
+            let data = serde_json::to_value(record)?;
+            project_control_plane_on(
+                &tx,
+                record.id,
+                "memory_record",
+                &data,
+                &record.updated_at.to_rfc3339(),
+            )?;
+        }
+        for card in &projection.inventory_cards {
+            let data = serde_json::to_value(card)?;
+            project_control_plane_on(
+                &tx,
+                card.id,
+                "inventory_card",
+                &data,
+                &Utc::now().to_rfc3339(),
+            )?;
+        }
+        for decision in &projection.promotion_decisions {
+            let data = serde_json::to_value(decision)?;
+            project_control_plane_on(
+                &tx,
+                decision.id,
+                "promotion_decision",
+                &data,
+                &decision.decided_at.to_rfc3339(),
+            )?;
+        }
+        for incident in &projection.incident_records {
+            let data = serde_json::to_value(incident)?;
+            project_control_plane_on(
+                &tx,
+                incident.id,
+                "incident_record",
+                &data,
+                &incident.updated_at.to_rfc3339(),
+            )?;
         }
         let last_event_id = tx.query_row("select coalesce(max(id), 0) from events", [], |row| {
             row.get(0)

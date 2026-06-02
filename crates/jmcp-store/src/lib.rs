@@ -5,12 +5,14 @@ mod replay;
 mod tests;
 
 use jmcp_domain::{
-    AdapterHealth, Approval, ApprovalChallenge, EffectLedgerEntry, Evidence, Lease,
-    ReplayCheckpoint, WorkOrder,
+    AdapterHealth, Approval, ApprovalChallenge, AttentionPacket, EffectLedgerEntry, Evidence,
+    IncidentRecord, InventoryCard, Lease, MemoryRecord, PromotionDecision, ReplayCheckpoint,
+    VoiceSession, WorkOrder,
 };
 use projection::{
     append_event_on, project_adapter_health_on, project_approval_challenge_on, project_approval_on,
-    project_effect_on, project_evidence_on, project_lease_on, project_work_order_on,
+    project_control_plane_on, project_effect_on, project_evidence_on, project_lease_on,
+    project_work_order_on,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
@@ -120,6 +122,12 @@ impl SqliteStore {
                 data text not null,
                 recorded_at text not null
             );
+            create table if not exists control_plane_records (
+                id text primary key,
+                kind text not null,
+                data text not null,
+                updated_at text not null
+            );
             create table if not exists replay_checkpoints (
                 id text primary key,
                 last_event_id integer not null,
@@ -208,6 +216,34 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn record_voice_session(&self, session: &VoiceSession) -> StoreResult<()> {
+        self.record_control_plane("voice_session", "voice.session.recorded", session)
+    }
+
+    pub fn record_attention_packet(&self, packet: &AttentionPacket) -> StoreResult<()> {
+        self.record_control_plane("attention_packet", "attention.packet.recorded", packet)
+    }
+
+    pub fn record_memory_record(&self, record: &MemoryRecord) -> StoreResult<()> {
+        self.record_control_plane("memory_record", "memory.recorded", record)
+    }
+
+    pub fn record_inventory_card(&self, card: &InventoryCard) -> StoreResult<()> {
+        self.record_control_plane("inventory_card", "inventory.card.recorded", card)
+    }
+
+    pub fn record_promotion_decision(&self, decision: &PromotionDecision) -> StoreResult<()> {
+        self.record_control_plane(
+            "promotion_decision",
+            "promotion.decision.recorded",
+            decision,
+        )
+    }
+
+    pub fn record_incident_record(&self, incident: &IncidentRecord) -> StoreResult<()> {
+        self.record_control_plane("incident_record", "incident.recorded", incident)
+    }
+
     pub fn record_replay_checkpoint(
         &self,
         checkpoint: &ReplayCheckpoint,
@@ -282,6 +318,30 @@ impl SqliteStore {
         self.list_json("select data from effect_ledger order by recorded_at desc")
     }
 
+    pub fn list_voice_sessions(&self) -> StoreResult<Vec<VoiceSession>> {
+        self.list_control_plane("voice_session")
+    }
+
+    pub fn list_attention_packets(&self) -> StoreResult<Vec<AttentionPacket>> {
+        self.list_control_plane("attention_packet")
+    }
+
+    pub fn list_memory_records(&self) -> StoreResult<Vec<MemoryRecord>> {
+        self.list_control_plane("memory_record")
+    }
+
+    pub fn list_inventory_cards(&self) -> StoreResult<Vec<InventoryCard>> {
+        self.list_control_plane("inventory_card")
+    }
+
+    pub fn list_promotion_decisions(&self) -> StoreResult<Vec<PromotionDecision>> {
+        self.list_control_plane("promotion_decision")
+    }
+
+    pub fn list_incident_records(&self) -> StoreResult<Vec<IncidentRecord>> {
+        self.list_control_plane("incident_record")
+    }
+
     pub fn list_replay_checkpoints(&self) -> StoreResult<Vec<ReplayCheckpoint>> {
         self.list_json("select data from replay_checkpoints order by created_at desc")
     }
@@ -313,4 +373,60 @@ impl SqliteStore {
             .transpose()
             .map_err(Into::into)
     }
+
+    fn record_control_plane<T>(&self, kind: &str, event_type: &str, record: &T) -> StoreResult<()>
+    where
+        T: serde::Serialize,
+    {
+        let data = serde_json::to_value(record)?;
+        let id = record_id(&data)?;
+        let updated_at = record_updated_at(&data)?;
+        let tx = self.conn.unchecked_transaction()?;
+        append_event_on(&tx, id, event_type, &data)?;
+        project_control_plane_on(&tx, id, kind, &data, &updated_at)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn list_control_plane<T>(&self, kind: &str) -> StoreResult<Vec<T>>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let mut stmt = self.conn.prepare(
+            "select data from control_plane_records where kind = ?1 order by updated_at desc",
+        )?;
+        let rows = stmt.query_map([kind], |row| row.get::<_, String>(0))?;
+        let mut values = Vec::new();
+        for row in rows {
+            let data = row?;
+            values.push(serde_json::from_str(&data)?);
+        }
+        Ok(values)
+    }
+}
+
+fn record_id(data: &serde_json::Value) -> StoreResult<Uuid> {
+    let Some(id) = data.get("id").and_then(|value| value.as_str()) else {
+        return Ok(Uuid::new_v4());
+    };
+    Ok(Uuid::parse_str(id)?)
+}
+
+fn record_updated_at(data: &serde_json::Value) -> StoreResult<String> {
+    let Some(updated_at) = data
+        .get("updatedAt")
+        .and_then(|value| value.as_str())
+        .or_else(|| data.get("updated_at").and_then(|value| value.as_str()))
+        .or_else(|| data.get("decidedAt").and_then(|value| value.as_str()))
+        .or_else(|| data.get("decided_at").and_then(|value| value.as_str()))
+        .or_else(|| data.get("createdAt").and_then(|value| value.as_str()))
+        .or_else(|| data.get("created_at").and_then(|value| value.as_str()))
+        .or_else(|| data.get("openedAt").and_then(|value| value.as_str()))
+        .or_else(|| data.get("opened_at").and_then(|value| value.as_str()))
+        .or_else(|| data.get("startedAt").and_then(|value| value.as_str()))
+        .or_else(|| data.get("started_at").and_then(|value| value.as_str()))
+    else {
+        return Ok(chrono::Utc::now().to_rfc3339());
+    };
+    Ok(updated_at.to_owned())
 }
