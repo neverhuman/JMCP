@@ -8,8 +8,8 @@ import "../voice-assistant.css";
 
 const LABELS: Record<VoiceState, string> = {
   off: "Voice off",
-  listening: "Listening for “hey JMCP”…",
-  armed: "I’m listening — say your command",
+  listening: "Listening — just talk",
+  armed: "Listening — just talk",
   transcribing: "Transcribing…",
   thinking: "Thinking…",
   speaking: "Speaking…",

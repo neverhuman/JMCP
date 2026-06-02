@@ -194,7 +194,6 @@ export function useVoiceAssistant(): VoiceAssistantApi {
 
   const handleUtterance = useCallback(async (blob: Blob) => {
     if (stateRef.current === "off") return;
-    const wasArmed = stateRef.current === "armed";
     setBoth("transcribing");
     let heard = "";
     try {
@@ -205,26 +204,13 @@ export function useVoiceAssistant(): VoiceAssistantApi {
       setBoth("listening");
       return;
     }
+    // Continuous conversation: no wake word — every spoken turn is acted on.
     if (!heard) {
-      setBoth(wasArmed ? "armed" : "listening");
-      return;
-    }
-    setTranscript(heard);
-
-    if (wasArmed) {
-      await runCommand(heard);
-      return;
-    }
-    const { triggered, command } = stripWakeWord(heard);
-    if (!triggered) {
       setBoth("listening");
       return;
     }
-    if (command.length > 0) {
-      await runCommand(command);
-    } else {
-      setBoth("armed"); // wake word alone -> the next utterance is the command
-    }
+    setTranscript(heard);
+    await runCommand(heard);
   }, [runCommand, setBoth]);
 
   const beginCapture = useCallback(() => {
@@ -301,7 +287,9 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     if (!supported || stateRef.current !== "off") return;
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       streamRef.current = stream;
       const ctx = new AudioContext();
       ctxRef.current = ctx;
@@ -323,7 +311,9 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         const now = Date.now();
 
         if (rms > RMS_THRESHOLD) {
-          if (!capturingRef.current) {
+          // Only capture while idle: don't transcribe the assistant's own TTS
+          // (half-duplex turn-taking; echo cancellation guards the rest).
+          if (!capturingRef.current && stateRef.current === "listening") {
             speakingSinceRef.current = now;
             beginCapture();
           }

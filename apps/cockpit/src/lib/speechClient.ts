@@ -30,6 +30,8 @@ function envBase(key: string, defaultBase: string): string {
 const ASR = envBase("VITE_ASR_BASE", "/asr");
 const TTS = envBase("VITE_TTS_BASE", "/tts");
 const LLM = envBase("VITE_LLM_BASE", "/llm");
+// Served-model name the vLLM sidecar registers under. Override with VITE_LLM_MODEL
+// when the underlying model is swapped.
 export const VOICE_MODEL = envBase("VITE_LLM_MODEL", "local/qwen3-30b-a3b");
 
 /** Transcribe recorded audio (webm/opus/ogg/wav) via the faster-whisper sidecar. */
