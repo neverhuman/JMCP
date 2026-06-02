@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   micSupported,
-  reason,
+  reasonStream,
   synthesize,
   transcribe,
   type ChatMessage,
@@ -37,7 +37,7 @@ export interface VoiceAssistantApi {
 
 const WAKE_WORDS = ["hey jmcp", "hey jim cp", "jmcp", "computer"];
 const RMS_THRESHOLD = 0.018; // speech vs silence
-const SILENCE_MS = 800; // trailing silence that ends an utterance
+const SILENCE_MS = 550; // trailing silence that ends an utterance
 const MIN_SPEECH_MS = 250; // ignore blips
 const SYSTEM_PROMPT =
   "You are JMCP, a concise local voice assistant running on the operator's own machine. " +
@@ -70,6 +70,8 @@ export function useVoiceAssistant(): VoiceAssistantApi {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechQueueRef = useRef<string[]>([]);
+  const drainingRef = useRef<boolean>(false);
   const historyRef = useRef<ChatMessage[]>([{ role: "system", content: SYSTEM_PROMPT }]);
   // VAD bookkeeping
   const speakingSinceRef = useRef<number>(0);
@@ -82,6 +84,8 @@ export function useVoiceAssistant(): VoiceAssistantApi {
   }, []);
 
   const cancelPlayback = useCallback(() => {
+    speechQueueRef.current = [];
+    drainingRef.current = false;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -89,31 +93,72 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     }
   }, []);
 
-  const speak = useCallback(async (text: string) => {
-    try {
-      const ogg = await synthesize(text);
-      const url = URL.createObjectURL(ogg);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      setBoth("speaking");
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        if (audioRef.current === audio) audioRef.current = null;
-        if (stateRef.current === "speaking") setBoth("listening");
-      };
-      await audio.play();
-    } catch {
-      setBoth("listening");
-    }
-  }, [setBoth]);
+  // Synthesize + play one sentence, resolving when it finishes.
+  const playOne = useCallback(async (text: string): Promise<void> => {
+    const ogg = await synthesize(text);
+    const url = URL.createObjectURL(ogg);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    await new Promise<void>((resolve) => {
+      audio.onended = () => resolve();
+      audio.onerror = () => resolve();
+      void audio.play().catch(() => resolve());
+    });
+    URL.revokeObjectURL(url);
+    if (audioRef.current === audio) audioRef.current = null;
+  }, []);
 
+  // Drain the sentence queue sequentially so speech plays in order while later
+  // sentences are still being synthesized.
+  const drainQueue = useCallback(async () => {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    setBoth("speaking");
+    while (speechQueueRef.current.length > 0 && stateRef.current !== "off") {
+      const next = speechQueueRef.current.shift();
+      if (next === undefined) continue;
+      try {
+        await playOne(next);
+      } catch {
+        /* ignore a single failed sentence */
+      }
+    }
+    drainingRef.current = false;
+    if (stateRef.current === "speaking") setBoth("listening");
+  }, [playOne, setBoth]);
+
+  const enqueueSpeech = useCallback((text: string) => {
+    const clean = text.trim();
+    if (clean.length === 0) return;
+    speechQueueRef.current.push(clean);
+    void drainQueue();
+  }, [drainQueue]);
+
+  // Stream the reply and speak each complete sentence as soon as it lands, so
+  // first audio plays within a second instead of after the whole reply.
   const runCommand = useCallback(async (command: string) => {
     setBoth("thinking");
     historyRef.current.push({ role: "user", content: command });
+    speechQueueRef.current = [];
+    let pending = "";
+    const flushSentences = () => {
+      const sentences = pending.match(/[^.!?:;]*[.!?:;]+\s*/g);
+      if (sentences === null) return;
+      let consumed = 0;
+      for (const sentence of sentences) {
+        enqueueSpeech(sentence);
+        consumed += sentence.length;
+      }
+      pending = pending.slice(consumed);
+    };
     try {
-      const answer = await reason(historyRef.current);
+      const answer = await reasonStream(historyRef.current, (delta) => {
+        pending += delta;
+        if (/[.!?:;]\s/.test(pending) || pending.length > 160) flushSentences();
+      });
+      enqueueSpeech(pending);
+      pending = "";
       historyRef.current.push({ role: "assistant", content: answer });
-      // keep history bounded (system + last ~6 turns)
       if (historyRef.current.length > 13) {
         historyRef.current = [
           historyRef.current[0],
@@ -121,12 +166,12 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         ];
       }
       setReply(answer);
-      await speak(answer || "Sorry, I did not catch that.");
+      if (answer.length === 0) enqueueSpeech("Sorry, I did not catch that.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "reasoning failed");
       setBoth("listening");
     }
-  }, [setBoth, speak]);
+  }, [enqueueSpeech, setBoth]);
 
   const handleUtterance = useCallback(async (blob: Blob) => {
     if (stateRef.current === "off") return;

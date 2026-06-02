@@ -84,13 +84,92 @@ export async function reason(
     method: "POST",
     headers: { "content-type": "application/json" },
     signal,
-    body: JSON.stringify({ model, messages, temperature: 0.4, max_tokens: 512, stream: false }),
+    body: JSON.stringify({ model, messages, temperature: 0.4, max_tokens: 200, stream: false }),
   });
   if (!response.ok) {
     throw new Error(`LLM ${response.status}`);
   }
   const body: unknown = await response.json();
   return firstChoiceContent(body).trim();
+}
+
+/** One streaming SSE chunk -> its incremental delta text (narrowed, no `as`). */
+function streamDelta(payload: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return "";
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+    return "";
+  }
+  const choice: unknown = parsed.choices[0];
+  if (!isRecord(choice) || !isRecord(choice.delta)) {
+    return "";
+  }
+  return readString(choice.delta.content);
+}
+
+/**
+ * Streaming reasoning turn: `onDelta` fires for each incremental token chunk so
+ * the caller can start speaking the first sentence before the rest generates.
+ * Returns the full text. Lets the voice loop hit first-audio in well under a second.
+ */
+export async function reasonStream(
+  messages: ChatMessage[],
+  onDelta: (delta: string) => void,
+  signal?: AbortSignal,
+  model: string = VOICE_MODEL,
+): Promise<string> {
+  const response = await fetch(`${LLM}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    signal,
+    body: JSON.stringify({ model, messages, temperature: 0.4, max_tokens: 200, stream: true }),
+  });
+  if (!response.ok) {
+    throw new Error(`LLM ${response.status}`);
+  }
+  const stream = response.body;
+  if (stream === null) {
+    throw new Error("LLM stream unavailable");
+  }
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let full = "";
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) {
+      break;
+    }
+    buffer += decoder.decode(chunk.value, { stream: true });
+    // Consume whole lines, keeping any trailing partial in `buffer` (index-based
+    // so there are no defensive coalescing operators).
+    let newlineAt = buffer.indexOf("\n");
+    while (newlineAt >= 0) {
+      const line = buffer.slice(0, newlineAt).trim();
+      buffer = buffer.slice(newlineAt + 1);
+      newlineAt = buffer.indexOf("\n");
+      if (!line.startsWith("data:")) {
+        continue;
+      }
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") {
+        continue;
+      }
+      if (payload.length === 0) {
+        continue;
+      }
+      const delta = streamDelta(payload);
+      if (delta.length > 0) {
+        full += delta;
+        onDelta(delta);
+      }
+    }
+  }
+  return full.trim();
 }
 
 /** True when this browser can capture a microphone (guards SSR / test / insecure-origin). */
