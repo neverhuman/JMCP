@@ -1,10 +1,14 @@
 #[cfg(test)]
+mod dispatch_tests;
+#[cfg(test)]
 mod tests;
 
 mod approval_flow;
 mod autonomous_actions;
 mod control_plane;
 mod control_plane_samples;
+mod dispatch;
+mod microtasks;
 mod runtime_health;
 
 use jcp_core::{Envelope, LocalSigner};
@@ -15,7 +19,10 @@ use jmcp_domain::{
     WorkOrder,
 };
 use jmcp_store::{SqliteStore, StoreError, StoredEvent};
-use runtime_health::{command_available, jailgun_health, jeryu_health};
+use runtime_health::{
+    command_available, jailgun_health, jeryu_health, local_gpu_inventory_health,
+    local_model_inventory_health, local_speech_inventory_health, microtask_planner_health,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fmt;
@@ -28,6 +35,7 @@ pub use control_plane_samples::{
     attention_inbox_sample, incident_records_sample, inventory_cards_sample, memory_records_sample,
     promotion_decisions_sample, voice_sessions_sample,
 };
+pub use dispatch::{DispatchReport, MicrotaskExecutor};
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -148,7 +156,14 @@ impl AppState {
             .lock()
             .expect("store lock")
             .list_adapter_health()?;
-        for detected in [jeryu_health(), jailgun_health()] {
+        for detected in [
+            jeryu_health(),
+            jailgun_health(),
+            microtask_planner_health(),
+            local_gpu_inventory_health(),
+            local_model_inventory_health(),
+            local_speech_inventory_health(),
+        ] {
             if !health.iter().any(|item| item.name == detected.name) {
                 health.push(detected);
             }
@@ -171,6 +186,15 @@ impl AppState {
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 subjects: vec!["*/jmcp/*".to_owned()],
                 capabilities: vec!["work-orders".to_owned(), "replay".to_owned()],
+            },
+            ServiceCard {
+                name: "jmcp.microtask-planner".to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                subjects: vec!["*/microtasks/*".to_owned(), "*/jmcp/*".to_owned()],
+                capabilities: vec![
+                    "microtask-catalog".to_owned(),
+                    "queue-signed-work-orders".to_owned(),
+                ],
             },
             ServiceCard {
                 name: "jankurai".to_owned(),
@@ -200,12 +224,30 @@ impl AppState {
                 subjects: vec!["*/jekko/*".to_owned()],
                 capabilities: vec!["headless".to_owned()],
             },
+            ServiceCard {
+                name: "local-model-inventory".to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                subjects: vec!["*/jekko/local-model-*".to_owned()],
+                capabilities: vec![
+                    "model-root-inventory".to_owned(),
+                    "gpu-inventory".to_owned(),
+                ],
+            },
+            ServiceCard {
+                name: "local-speech-inventory".to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                subjects: vec!["*/jekko/local-speech-*".to_owned()],
+                capabilities: vec!["asr-inventory".to_owned(), "tts-inventory".to_owned()],
+            },
         ]
     }
 
     pub fn systems(&self) -> Vec<SystemStatus> {
         let jeryu = jeryu_health();
         let jailgun = jailgun_health();
+        let gpu = local_gpu_inventory_health();
+        let model = local_model_inventory_health();
+        let speech = local_speech_inventory_health();
         vec![
             SystemStatus {
                 name: "jmcpd".to_owned(),
@@ -213,6 +255,13 @@ impl AppState {
                 health: HealthLevel::Nominal,
                 jcp: jcp_core::JCP_VERSION.to_owned(),
                 latency: "local".to_owned(),
+            },
+            SystemStatus {
+                name: "jmcp.microtask-planner".to_owned(),
+                role: "microtask catalog and queue planner".to_owned(),
+                health: HealthLevel::Nominal,
+                jcp: jcp_core::JCP_VERSION.to_owned(),
+                latency: "queue-only".to_owned(),
             },
             SystemStatus {
                 name: "jeryu".to_owned(),
@@ -247,6 +296,27 @@ impl AppState {
                 health: command_available("jekko"),
                 jcp: "adapter".to_owned(),
                 latency: "disabled unless configured".to_owned(),
+            },
+            SystemStatus {
+                name: "local-gpu".to_owned(),
+                role: "GPU inventory".to_owned(),
+                health: gpu.health,
+                jcp: "inventory".to_owned(),
+                latency: gpu.detail,
+            },
+            SystemStatus {
+                name: "local-models".to_owned(),
+                role: "local model root inventory".to_owned(),
+                health: model.health,
+                jcp: "inventory".to_owned(),
+                latency: model.detail,
+            },
+            SystemStatus {
+                name: "local-speech".to_owned(),
+                role: "ASR/TTS inventory".to_owned(),
+                health: speech.health,
+                jcp: "inventory".to_owned(),
+                latency: speech.detail,
             },
         ]
     }

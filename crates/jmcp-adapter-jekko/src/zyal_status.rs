@@ -71,3 +71,30 @@ impl ZyalRunStatus {
         "partial"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_real_jekko_port_run_status_output() {
+        // Captured verbatim from `jekko port-run --status` (live-7tab-jekko, the
+        // jekko ZYAL engine built from this branch's manifest). This locks the
+        // cross-repo contract: if jekko's status JSON shape drifts, this fails
+        // here instead of silently mis-reporting progress. Note the extra
+        // fields (name/objective/depends_on/summary/timestamps) the parser must
+        // tolerate and ignore.
+        let real = r#"{"run_id":"e2e-1","phases":[
+          {"phase_id":"frame","name":"Frame the objective","objective":"o","depends_on":[],"status":"complete","summary":"scaffold","started_at":"2026-06-02T16:03:20Z","completed_at":"2026-06-02T16:03:20Z","updated_at":"2026-06-02T16:03:20Z"},
+          {"phase_id":"produce","name":"Produce candidates with Jailgun","objective":"o","depends_on":["research"],"status":"complete","summary":"scaffold","started_at":"2026-06-02T16:03:20Z","completed_at":"2026-06-02T16:03:20Z","updated_at":"2026-06-02T16:03:20Z"}
+        ]}"#;
+        let parsed: ZyalRunStatus =
+            serde_json::from_str(real).expect("parse real jekko port-run --status JSON");
+        assert_eq!(parsed.run_id, "e2e-1");
+        assert_eq!(parsed.total(), 2);
+        assert_eq!(parsed.completed(), 2);
+        assert_eq!(parsed.percent(), 100);
+        assert!(parsed.is_terminal());
+        assert_eq!(parsed.state_label(), "complete");
+    }
+}
