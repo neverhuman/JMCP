@@ -30,6 +30,18 @@ fn live_ecosystem() -> EcosystemSnapshot {
                 depends_on: vec!["jeryu.repo.adopt".to_owned()],
                 queue: Some(0),
             },
+            EcosystemTool {
+                name: "jailgun.run_agent".to_owned(),
+                class_name: "bounded agent execution".to_owned(),
+                conformance: "C1 leased".to_owned(),
+                side_effects: "Jailgun HTTP ingest".to_owned(),
+                data_classes: vec!["prompt_ref".to_owned(), "receipts".to_owned()],
+                repo: Some("Jailgun".to_owned()),
+                provider: Some("jailgun".to_owned()),
+                health: Some("nominal".to_owned()),
+                depends_on: vec!["jailgun.api.runs".to_owned()],
+                queue: Some(0),
+            },
         ],
         repos: Vec::new(),
         live: true,
@@ -54,6 +66,7 @@ fn universe_payload_combines_bootstrap_and_ecosystem() {
     let jeryu = repo_work_order("Jeryu", "main", "jeryu-pool");
     let jekko = repo_work_order("Jekko", "jmcp/bridge-quarantine", "jekko-pool");
     let jankurai = repo_work_order("Jankurai", "policy/replay-ratchet", "jankurai-pool");
+    let jailgun = repo_work_order("Jailgun", "main", "jailgun-pool");
     let payload = compose_universe(
         vec![
             SystemStatus {
@@ -77,6 +90,13 @@ fn universe_payload_combines_bootstrap_and_ecosystem() {
                 jcp: "1.0.0".to_owned(),
                 latency: "local-cli".to_owned(),
             },
+            SystemStatus {
+                name: "jailgun".to_owned(),
+                role: "bounded ChatGPT capture".to_owned(),
+                health: HealthLevel::Nominal,
+                jcp: "adapter".to_owned(),
+                latency: "http://127.0.0.1:8787".to_owned(),
+            },
         ],
         vec![
             ServiceCard {
@@ -97,8 +117,19 @@ fn universe_payload_combines_bootstrap_and_ecosystem() {
                 subjects: vec!["*/jankurai/*".to_owned()],
                 capabilities: vec!["local-cli".to_owned()],
             },
+            ServiceCard {
+                name: "jailgun".to_owned(),
+                version: "0.1.0".to_owned(),
+                subjects: vec!["*/jailgun/*".to_owned()],
+                capabilities: vec!["run-agent".to_owned(), "review-packet".to_owned()],
+            },
         ],
-        vec![jeryu.clone(), jekko.clone(), jankurai.clone()],
+        vec![
+            jeryu.clone(),
+            jekko.clone(),
+            jankurai.clone(),
+            jailgun.clone(),
+        ],
         vec![
             Lease {
                 work_order_id: jeryu.id,
@@ -113,6 +144,11 @@ fn universe_payload_combines_bootstrap_and_ecosystem() {
             Lease {
                 work_order_id: jankurai.id,
                 holder: "jankurai-pool".to_owned(),
+                expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
+            },
+            Lease {
+                work_order_id: jailgun.id,
+                holder: "jailgun-pool".to_owned(),
                 expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
             },
         ],
@@ -140,6 +176,11 @@ fn universe_payload_combines_bootstrap_and_ecosystem() {
         .placements
         .iter()
         .any(|placement| placement.agent == "Jeryu" && placement.branch == "main"));
+    assert!(payload
+        .bootstrap_tui
+        .active_repos
+        .iter()
+        .any(|repo| repo.repo == "Jailgun"));
 }
 
 #[test]

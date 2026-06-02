@@ -11,6 +11,7 @@ chrono.workspace = true
 hex.workspace = true
 jmcp-adapter-sdk = { path = "../jmcp-adapter-sdk" }
 jmcp-domain = { path = "../jmcp-domain" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

@@ -8,7 +8,7 @@ use axum::{
 use chrono::Duration as ChronoDuration;
 use jcp_core::Envelope;
 use jmcp_app::{local_actor, AppState, ApprovalDecisionError};
-use jmcp_domain::{ApprovalDecision, SystemStatus};
+use jmcp_domain::{ApprovalDecision, AutonomousActionOverrides, SystemStatus};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
@@ -38,6 +38,11 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/systems", get(systems))
+        .route("/autonomous-actions", get(autonomous_actions))
+        .route(
+            "/autonomous-actions/:id/submit",
+            post(submit_autonomous_action),
+        )
         .route("/work-orders", post(submit).get(list))
         .route("/work-orders/:id", get(work_order))
         .route("/approvals", get(approvals))
@@ -125,6 +130,24 @@ async fn submit(
     let work_order = state
         .submit_envelope(envelope)
         .map_err(|err| (axum::http::StatusCode::BAD_REQUEST, err.to_string()))?;
+    Ok(Json(json!(work_order)))
+}
+
+async fn autonomous_actions(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let actions = state.list_autonomous_actions().map_err(internal_error)?;
+    Ok(Json(json!(actions)))
+}
+
+async fn submit_autonomous_action(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(overrides): Json<AutonomousActionOverrides>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_order = state
+        .submit_autonomous_action(&id, overrides)
+        .map_err(bad_request)?;
     Ok(Json(json!(work_order)))
 }
 
@@ -272,4 +295,62 @@ async fn blocking_systems(state: AppState) -> Result<Vec<SystemStatus>, anyhow::
     tokio::task::spawn_blocking(move || state.systems())
         .await
         .map_err(|err| anyhow::anyhow!("systems health task failed: {err}"))
+}
+
+#[cfg(test)]
+mod autonomous_action_route_tests {
+    use super::*;
+    use jmcp_store::SqliteStore;
+
+    fn test_state() -> AppState {
+        AppState::new(SqliteStore::in_memory().unwrap())
+    }
+
+    #[tokio::test]
+    async fn autonomous_actions_route_returns_three_full_auto_actions() {
+        let Json(value) = autonomous_actions(State(test_state())).await.unwrap();
+        let actions = value.as_array().expect("actions array");
+
+        assert_eq!(actions.len(), 3);
+        assert_eq!(actions[0]["id"], "repo-bank-bug-scan");
+        assert_eq!(actions[0]["mode"], "full_auto");
+        assert_eq!(actions[0]["workOrderKind"], "zyal.run");
+        assert_eq!(actions[0]["safety"]["live"], false);
+    }
+
+    #[tokio::test]
+    async fn autonomous_action_submit_route_creates_signed_work_order_without_challenge() {
+        let state = test_state();
+        let Json(value) = submit_autonomous_action(
+            State(state.clone()),
+            Path("repo-bank-bug-scan".to_owned()),
+            Json(AutonomousActionOverrides::default()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(value["subject"], "jmcp/zyal/repo-bank-bug-scan");
+        assert_eq!(value["task"]["kind"], "zyal.run");
+        assert_eq!(
+            value["task"]["payload"]["metadata"]["submitted_by"],
+            "jmcp.full_auto"
+        );
+        assert_eq!(value["task"]["payload"]["live"], false);
+        assert_eq!(state.list_work_orders().unwrap().len(), 1);
+        assert!(state.list_approval_challenges().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn autonomous_action_submit_route_rejects_unknown_action() {
+        let error = submit_autonomous_action(
+            State(test_state()),
+            Path("missing".to_owned()),
+            Json(AutonomousActionOverrides::default()),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(error.1.contains("unknown autonomous action"));
+    }
 }

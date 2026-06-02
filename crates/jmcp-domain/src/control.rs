@@ -1,6 +1,7 @@
 use crate::{ApprovalDecision, AttentionLevel, Evidence, HealthLevel};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -166,4 +167,66 @@ pub enum IncidentState {
     Quarantined,
     Mitigated,
     Closed,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousActionCard {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub mode: AutonomousActionMode,
+    pub subject: AutonomousActionSubject,
+    pub work_order_kind: AutonomousWorkOrderKind,
+    pub manifest: AutonomousActionManifestMetadata,
+    pub safety: AutonomousActionSafetyDefaults,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutonomousActionMode {
+    FullAuto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct AutonomousActionSubject(pub String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct AutonomousWorkOrderKind(pub String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousActionManifestMetadata {
+    pub path: String,
+    pub manifest_id: String,
+    pub name: String,
+    pub objective: String,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousActionSafetyDefaults {
+    pub evidence_oriented: bool,
+    pub live: bool,
+    pub max_stages: u32,
+    pub time_budget_hours: f64,
+    pub per_phase_timeout_secs: u64,
+    pub poll_timeout_secs: u64,
+    pub submitted_by: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AutonomousActionOverrides {
+    pub run_id: Option<String>,
+    pub db: Option<String>,
+    pub live: Option<bool>,
+    pub max_stages: Option<u32>,
+    pub time_budget_hours: Option<f64>,
+    pub per_phase_timeout_secs: Option<u64>,
+    pub poll_timeout_secs: Option<u64>,
+    pub metadata: Option<Value>,
 }
