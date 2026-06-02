@@ -1,4 +1,5 @@
 use super::*;
+use crate::telegram_helpers::structured_event_record;
 use axum::{
     extract::{Path as AxumPath, State as AxumState},
     routing::post,

@@ -1,37 +1,17 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
 use uuid::Uuid;
 
 mod approvals;
 mod control;
+mod errors;
 
 #[cfg(test)]
 mod tests;
 
 pub use control::*;
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum DomainError {
-    #[error("invalid transition from {from:?} using {action}")]
-    InvalidTransition {
-        from: WorkOrderStatus,
-        action: &'static str,
-    },
-    #[error("lease expired")]
-    LeaseExpired,
-    #[error("lease does not match work order")]
-    LeaseWrongWorkOrder,
-    #[error("lease holder mismatch")]
-    LeaseHolderMismatch,
-    #[error("approval expired")]
-    ApprovalExpired,
-    #[error("approval challenge already used")]
-    ApprovalAlreadyUsed,
-    #[error("wrong approver")]
-    WrongApprover,
-}
+pub use errors::*;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WorkOrderStatus {
@@ -72,13 +52,13 @@ pub struct Lease {
 impl Lease {
     pub fn validate_for(&self, work_order_id: Uuid, holder: &str) -> Result<(), DomainError> {
         if self.work_order_id != work_order_id {
-            return Err(DomainError::LeaseWrongWorkOrder);
+            return Err(DomainError::lease_wrong_work_order());
         }
         if self.holder != holder {
-            return Err(DomainError::LeaseHolderMismatch);
+            return Err(DomainError::lease_holder_mismatch());
         }
         if self.expires_at < Utc::now() {
-            return Err(DomainError::LeaseExpired);
+            return Err(DomainError::lease_expired());
         }
         Ok(())
     }
@@ -281,13 +261,13 @@ impl WorkOrder {
         decision: ApprovalDecision,
     ) -> Result<(), DomainError> {
         if approval.work_order_id != self.id {
-            return Err(DomainError::LeaseWrongWorkOrder);
+            return Err(DomainError::lease_wrong_work_order());
         }
         if approval.expires_at < Utc::now() {
-            return Err(DomainError::ApprovalExpired);
+            return Err(DomainError::approval_expired());
         }
         if approval.approver != approver {
-            return Err(DomainError::WrongApprover);
+            return Err(DomainError::wrong_approver());
         }
         approval.decision = Some(decision);
         match decision {
@@ -337,10 +317,7 @@ impl WorkOrder {
         allowed: &[WorkOrderStatus],
     ) -> Result<(), DomainError> {
         if !allowed.contains(&self.status) {
-            return Err(DomainError::InvalidTransition {
-                from: self.status,
-                action,
-            });
+            return Err(DomainError::invalid_transition(self.status, action));
         }
         self.status = to;
         self.updated_at = Utc::now();

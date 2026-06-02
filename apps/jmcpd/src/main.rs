@@ -1,25 +1,28 @@
 use anyhow::Result;
 use chrono::Duration as ChronoDuration;
 use clap::Parser;
-use jcp_core::{Envelope, LocalSigner, Subject};
 use jmcp_api::router;
-use jmcp_app::{telegram_actor, AppState, ApprovalDecisionError};
+use jmcp_app::AppState;
 use jmcp_approval_telegram::{
     render_prompt, TelegramApprovalChallenge, TelegramBotClient, TelegramConfig, TelegramMessage,
 };
-use jmcp_domain::{ApprovalDecision, WorkOrder};
+use jmcp_domain::ApprovalDecision;
 use jmcp_store::SqliteStore;
 use serde_json::json;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
-    str::FromStr,
     time::Duration,
 };
 use uuid::Uuid;
 
+mod telegram_helpers;
 #[cfg(test)]
 mod tests;
+
+use crate::telegram_helpers::{
+    decide_from_telegram, emit_structured_event, status_from_telegram, submit_from_telegram,
+};
 
 const DEFAULT_API_BIND: &str = "127.0.0.1:18877";
 const JERYU_PROTECTED_PORTS: &[u16] = &[2224, 8787, 8799, 8929, 18787, 18788, 19800];
@@ -350,98 +353,4 @@ async fn handle_telegram_message(
         );
     }
     Ok(())
-}
-
-fn emit_structured_event(level: &str, event: &str, fields: serde_json::Value) {
-    let record = structured_event_record(level, event, fields);
-    match level {
-        "error" => eprintln!("{}", record),
-        _ => println!("{}", record),
-    }
-}
-
-fn structured_event_record(
-    level: &str,
-    event: &str,
-    fields: serde_json::Value,
-) -> serde_json::Value {
-    serde_json::json!({
-        "eventId": uuid::Uuid::new_v4(),
-        "event": event,
-        "level": level,
-        "component": "jmcpd",
-        "timestamp": chrono::Utc::now(),
-        "fields": fields,
-    })
-}
-
-fn submit_from_telegram(
-    state: &AppState,
-    subject: &str,
-    kind: &str,
-    payload: &str,
-) -> Result<WorkOrder> {
-    let payload = serde_json::from_str(payload)?;
-    let signer = LocalSigner::load_or_create_default()?;
-    let envelope = signer.sign(Envelope::new(
-        Subject::from_str(subject)?,
-        kind.to_owned(),
-        payload,
-    ));
-    Ok(state.submit_envelope(envelope)?)
-}
-
-fn status_from_telegram(state: &AppState, id: Uuid) -> String {
-    match state.work_order(id) {
-        Ok(Some(work_order)) => {
-            let attention = if work_order.attention.is_empty() {
-                "none".to_owned()
-            } else {
-                work_order
-                    .attention
-                    .iter()
-                    .map(|item| item.reason.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            format!(
-                "JMCP work order {}: {:?}; attention: {}; evidence: {}.",
-                work_order.id,
-                work_order.status,
-                attention,
-                work_order.evidence.len()
-            )
-        }
-        Ok(None) => "JMCP status rejected: unknown work order id.".to_owned(),
-        Err(_) => "JMCP status unavailable: state could not be read.".to_owned(),
-    }
-}
-
-fn decide_from_telegram(
-    state: &AppState,
-    token: &str,
-    user_id: i64,
-    chat_id: i64,
-    decision: ApprovalDecision,
-) -> String {
-    match state.decide_approval_by_token(token.trim(), telegram_actor(user_id, chat_id), decision) {
-        Ok(outcome) => format!(
-            "JMCP approval {:?} for work order {}.",
-            outcome.approval.decision.unwrap_or(decision),
-            outcome.work_order.id
-        ),
-        Err(ApprovalDecisionError::UnknownToken) => {
-            "JMCP approval rejected: unknown token.".to_owned()
-        }
-        Err(ApprovalDecisionError::Expired) => "JMCP approval rejected: expired token.".to_owned(),
-        Err(ApprovalDecisionError::AlreadyUsed) => {
-            "JMCP approval rejected: token already used.".to_owned()
-        }
-        Err(ApprovalDecisionError::WrongApprover) => {
-            "JMCP approval rejected: wrong Telegram approver.".to_owned()
-        }
-        Err(ApprovalDecisionError::UnavailableState(_)) => {
-            "JMCP approval unavailable: state could not be updated.".to_owned()
-        }
-    }
 }

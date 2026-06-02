@@ -57,7 +57,7 @@ impl AppState {
             .ok_or(ApprovalDecisionError::UnknownToken)?;
 
         if let Err(err) = challenge.decide(&actor, decision, Utc::now()) {
-            if matches!(err, DomainError::ApprovalExpired) {
+            if matches!(err.kind, jmcp_domain::DomainErrorKind::ApprovalExpired) {
                 store
                     .record_approval_challenge(&challenge)
                     .map_err(unavailable_state)?;
@@ -188,10 +188,10 @@ fn approval_token_hash(token: &str) -> String {
 }
 
 fn decision_error(err: DomainError) -> ApprovalDecisionError {
-    match err {
-        DomainError::ApprovalExpired => ApprovalDecisionError::Expired,
-        DomainError::ApprovalAlreadyUsed => ApprovalDecisionError::AlreadyUsed,
-        DomainError::WrongApprover => ApprovalDecisionError::WrongApprover,
+    match err.kind {
+        jmcp_domain::DomainErrorKind::ApprovalExpired => ApprovalDecisionError::Expired,
+        jmcp_domain::DomainErrorKind::ApprovalAlreadyUsed => ApprovalDecisionError::AlreadyUsed,
+        jmcp_domain::DomainErrorKind::WrongApprover => ApprovalDecisionError::WrongApprover,
         other => ApprovalDecisionError::UnavailableState(other.to_string()),
     }
 }

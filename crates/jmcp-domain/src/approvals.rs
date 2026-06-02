@@ -39,18 +39,18 @@ impl ApprovalChallenge {
         now: DateTime<Utc>,
     ) -> Result<(), DomainError> {
         if self.state != ApprovalChallengeState::Pending {
-            return Err(DomainError::ApprovalAlreadyUsed);
+            return Err(DomainError::approval_already_used());
         }
         if now > self.expires_at {
             self.state = ApprovalChallengeState::Expired;
             self.updated_at = now;
-            return Err(DomainError::ApprovalExpired);
+            return Err(DomainError::approval_expired());
         }
         if self.approver != actor.approver
             || self.target_user_id != actor.telegram_user_id
             || self.target_chat_id != actor.telegram_chat_id
         {
-            return Err(DomainError::WrongApprover);
+            return Err(DomainError::wrong_approver());
         }
 
         self.state = match decision {

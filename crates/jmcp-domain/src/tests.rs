@@ -25,7 +25,7 @@ fn approval_must_match_work_order() {
 
     assert_eq!(
         first.apply_approval(&mut approval, "user", ApprovalDecision::Approved),
-        Err(DomainError::LeaseWrongWorkOrder)
+        Err(DomainError::lease_wrong_work_order())
     );
 }
 
@@ -54,7 +54,7 @@ fn challenge_is_single_use_and_token_free() {
     assert_eq!(challenge.decision, Some(ApprovalDecision::Approved));
     assert_eq!(
         challenge.decide(&actor, ApprovalDecision::Rejected, Utc::now()),
-        Err(DomainError::ApprovalAlreadyUsed)
+        Err(DomainError::approval_already_used())
     );
 }
 
@@ -77,7 +77,7 @@ fn challenge_rejects_wrong_telegram_actor() {
 
     assert_eq!(
         challenge.decide(&actor, ApprovalDecision::Approved, Utc::now()),
-        Err(DomainError::WrongApprover)
+        Err(DomainError::wrong_approver())
     );
     assert_eq!(challenge.state, ApprovalChallengeState::Pending);
 }
@@ -101,7 +101,7 @@ fn expired_challenge_is_marked_expired() {
 
     assert_eq!(
         challenge.decide(&actor, ApprovalDecision::Approved, Utc::now()),
-        Err(DomainError::ApprovalExpired)
+        Err(DomainError::approval_expired())
     );
     assert_eq!(challenge.state, ApprovalChallengeState::Expired);
 }
@@ -144,4 +144,24 @@ fn control_plane_records_serialize_in_camel_case() {
     assert!(session_json.get("createdAt").is_some());
     assert!(decision_json.get("targetKind").is_some());
     assert!(decision_json.get("decidedAt").is_some());
+}
+
+#[test]
+fn domain_error_repair_context_is_agent_readable() {
+    let err = DomainError::lease_expired();
+    let repair = err.repair_context();
+    let rendered = repair.to_string();
+    let rendered_error = err.to_string();
+
+    assert!(rendered.contains(&repair.purpose));
+    assert!(rendered.contains(&repair.reason));
+    assert!(rendered.contains(repair.docs_url));
+    assert!(rendered.contains(&repair.repair_hint));
+    for fix in &repair.common_fixes {
+        assert!(rendered.contains(fix), "missing fix {fix}: {rendered}");
+    }
+    assert!(rendered_error.contains(&repair.purpose));
+    assert!(rendered_error.contains(&repair.reason));
+    assert!(rendered_error.contains(repair.docs_url));
+    assert!(rendered_error.contains(&repair.repair_hint));
 }
