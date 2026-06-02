@@ -1265,6 +1265,7 @@ dependencies = [
  "anyhow",
  "clap",
  "jcp-core",
+ "jmcp-adapter-speech",
  "jmcp-approval-telegram",
  "reqwest",
  "serde",
