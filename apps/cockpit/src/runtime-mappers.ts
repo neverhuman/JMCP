@@ -35,9 +35,18 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+const BRANCH_PAYLOAD_KEYS = ["branch", "repo_branch", "repoBranch", "git_branch", "gitBranch"] as const;
+const REPO_PAYLOAD_KEYS = ["repo", "repository", "provider"] as const;
+
+type RuntimeStringCandidate =
+  | { state: "present"; value: string }
+  | { state: "absent"; reason: "payload_not_record" | "missing_string" | "subject_unrecognized" };
+
 export function mapWorkOrder(workOrder: ApiWorkOrder): WorkItem {
   const owner = workOrder.subject.split("/")[1] ?? "jmcp";
   const state = workOrder.status.toLowerCase();
+  const repo = repoCandidateForWorkOrder(workOrder);
+  const branch = stringCandidateFromPayload(workOrder.task.payload, BRANCH_PAYLOAD_KEYS);
   return {
     id: workOrder.id,
     title: workOrder.task.kind,
@@ -47,8 +56,8 @@ export function mapWorkOrder(workOrder: ApiWorkOrder): WorkItem {
     lease: state === "submitted" ? "lease required" : "lease active",
     updated: formatAge(workOrder.updated_at),
     evidence: workOrder.evidence.length,
-    repo: repoFromPayload(workOrder.task.payload) ?? repoFromSubject(workOrder.subject),
-    branch: branchFromPayload(workOrder.task.payload),
+    ...optionalWorkField("repo", repo),
+    ...optionalWorkField("branch", branch),
   };
 }
 
@@ -320,28 +329,46 @@ function titleCase(value: string) {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
-function branchFromPayload(payload: unknown) {
-  if (!isRecord(payload)) {
-    return undefined;
+function repoCandidateForWorkOrder(workOrder: ApiWorkOrder): RuntimeStringCandidate {
+  const fromPayload = stringCandidateFromPayload(workOrder.task.payload, REPO_PAYLOAD_KEYS);
+  if (fromPayload.state === "present") {
+    return fromPayload;
   }
-  const branch = payload.branch ?? payload.repo_branch ?? payload.repoBranch ?? payload.git_branch ?? payload.gitBranch;
-  return isString(branch) ? branch : undefined;
+  return repoCandidateFromSubject(workOrder.subject);
 }
 
-function repoFromPayload(payload: unknown) {
+function stringCandidateFromPayload(
+  payload: unknown,
+  keys: readonly string[],
+): RuntimeStringCandidate {
   if (!isRecord(payload)) {
-    return undefined;
+    return { state: "absent", reason: "payload_not_record" };
   }
-  const repo = payload.repo ?? payload.repository ?? payload.provider;
-  return isString(repo) ? repo : undefined;
+  for (const key of keys) {
+    const value = payload[key];
+    if (isString(value) && value.trim().length > 0) {
+      return { state: "present", value };
+    }
+  }
+  return { state: "absent", reason: "missing_string" };
 }
 
-function repoFromSubject(subject: string) {
+function repoCandidateFromSubject(subject: string): RuntimeStringCandidate {
   const parts = subject.split("/");
   if (parts.length > 1 && parts[1]) {
-    return titleCase(parts[1]);
+    return { state: "present", value: titleCase(parts[1]) };
   }
-  return undefined;
+  return { state: "absent", reason: "subject_unrecognized" };
+}
+
+function optionalWorkField(
+  key: "repo" | "branch",
+  candidate: RuntimeStringCandidate,
+): Partial<Pick<WorkItem, "repo" | "branch">> {
+  if (candidate.state === "present") {
+    return { [key]: candidate.value };
+  }
+  return {};
 }
 
 function formatAge(value: string) {

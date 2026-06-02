@@ -14,6 +14,7 @@ jcp-core = { path = "../../crates/jcp-core" }
 jmcp-adapter-jankurai = { path = "../../crates/jmcp-adapter-jankurai" }
 jmcp-adapter-jekko = { path = "../../crates/jmcp-adapter-jekko" }
 jmcp-adapter-sdk = { path = "../../crates/jmcp-adapter-sdk" }
+jmcp-adapter-speech = { path = "../../crates/jmcp-adapter-speech" }
 jmcp-api = { path = "../../crates/jmcp-api" }
 jmcp-app = { path = "../../crates/jmcp-app" }
 jmcp-approval-telegram = { path = "../../crates/jmcp-approval-telegram" }

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use jmcp_domain::Evidence;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::model::JailgunSummary;
@@ -69,11 +70,7 @@ pub(crate) fn evidence_for_summary(
         }
     }
     if !summary.failures.is_empty() {
-        let digest = hex::encode(Sha256::digest(
-            serde_json::to_string(&summary.failures)
-                .unwrap_or_default()
-                .as_bytes(),
-        ));
+        let digest = failures_digest(&summary.failures);
         evidence.push(Evidence {
             kind: "jailgun.failures.digest".to_owned(),
             uri: format!("sha256:{digest}"),
@@ -85,4 +82,16 @@ pub(crate) fn evidence_for_summary(
 
 pub(crate) fn file_uri(path: &PathBuf) -> String {
     format!("file://{}", path.display())
+}
+
+fn failures_digest(failures: &[Value]) -> String {
+    let mut hasher = Sha256::new();
+    for failure in failures {
+        let encoded = failure.to_string();
+        hasher.update(encoded.len().to_string().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(encoded.as_bytes());
+        hasher.update(b"\0");
+    }
+    hex::encode(hasher.finalize())
 }

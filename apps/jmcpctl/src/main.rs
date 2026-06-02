@@ -7,9 +7,11 @@ use std::path::PathBuf;
 
 mod doctor;
 mod telegram;
+mod voice_demo;
 
 use doctor::doctor_env;
 use telegram::{telegram_discover_ids, telegram_doctor};
+use voice_demo::VoiceDemo;
 
 const DEFAULT_API_URL: &str = "http://127.0.0.1:18877";
 
@@ -79,6 +81,32 @@ enum TelegramCommand {
         #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
         env_file: PathBuf,
     },
+    VoiceDemo {
+        #[command(subcommand)]
+        command: VoiceDemoCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum VoiceDemoCommand {
+    Discover {
+        #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
+        env_file: PathBuf,
+    },
+    Send {
+        #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
+        env_file: PathBuf,
+        chat_id: i64,
+        text: String,
+    },
+    Listen {
+        #[arg(long, env = "JMCP_TELEGRAM_ENV", default_value = "telegram.env")]
+        env_file: PathBuf,
+        #[arg(long)]
+        reply_voice: bool,
+        #[arg(long, default_value_t = 60)]
+        seconds: u64,
+    },
 }
 
 #[tokio::main]
@@ -99,6 +127,54 @@ async fn main() -> Result<()> {
                 offset_file,
             } => telegram_doctor(env_file, offset_file).await?,
             TelegramCommand::DiscoverIds { env_file } => telegram_discover_ids(env_file).await?,
+            TelegramCommand::VoiceDemo { command } => match command {
+                VoiceDemoCommand::Discover { env_file } => {
+                    let demo = VoiceDemo::from_env_file(env_file)?;
+                    let result = demo.discover().await?;
+                    println!("updates: {}", result.update_count);
+                    for chat_id in result.chat_ids {
+                        println!("  chat_id={chat_id}");
+                    }
+                }
+                VoiceDemoCommand::Send {
+                    env_file,
+                    chat_id,
+                    text,
+                } => {
+                    let demo = VoiceDemo::from_env_file(env_file)?;
+                    let result = demo.send(chat_id, &text).await?;
+                    println!(
+                        "[send] sendVoice message_id={} bytes={} chars={}",
+                        result.message_id, result.bytes, result.chars
+                    );
+                }
+                VoiceDemoCommand::Listen {
+                    env_file,
+                    reply_voice,
+                    seconds,
+                } => {
+                    let demo = VoiceDemo::from_env_file(env_file)?;
+                    println!(
+                        "[listen] waiting up to {seconds}s for a voice note... send one to the bot now."
+                    );
+                    match demo.listen(reply_voice, seconds).await? {
+                        Some(result) => {
+                            println!(
+                                "[recv] {}s voice -> ASR: {:?}",
+                                result.voice_duration.unwrap_or_default(),
+                                result.transcript
+                            );
+                            println!(
+                                "[recv] replied_to_chat_id={} voice_reply={}",
+                                result.chat_id, result.reply_voice_sent
+                            );
+                        }
+                        None => {
+                            println!("[listen] timed out with no voice note.");
+                        }
+                    }
+                }
+            },
         },
         Command::Submit {
             subject,

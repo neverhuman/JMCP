@@ -147,28 +147,14 @@ pub(crate) fn universe_repo_scores(
     repo_names
         .iter()
         .map(|repo| {
-            let tools = tools_by_repo.get(repo).cloned().unwrap_or_default();
+            let tools = tools_for_repo(&tools_by_repo, repo);
             let tool_count = tools.len();
             let placement = placements
                 .iter()
                 .find(|item| item.repo.eq_ignore_ascii_case(repo))
                 .cloned();
-            let current_task = placement
-                .as_ref()
-                .map(|item| item.current_task.clone())
-                .unwrap_or_else(|| "unobserved".to_owned());
-            let branch = placement
-                .as_ref()
-                .map(|item| item.branch.clone())
-                .unwrap_or_else(|| "unobserved".to_owned());
-            let pool = placement
-                .as_ref()
-                .map(|item| item.pool.clone())
-                .unwrap_or_else(|| "unassigned".to_owned());
-            let placement_name = placement
-                .as_ref()
-                .map(|item| item.placement.clone())
-                .unwrap_or_else(|| repo.to_lowercase());
+            let (current_task, branch, pool, placement_name) =
+                repo_score_placement_fields(repo, placement.as_ref());
             let coverage = repo_coverage(&current_task, &branch, &pool);
             let score = repo_score(tool_count, coverage, tools.as_slice());
             let health = score_health(score);
@@ -188,6 +174,36 @@ pub(crate) fn universe_repo_scores(
             }
         })
         .collect()
+}
+
+fn tools_for_repo<'a>(
+    tools_by_repo: &BTreeMap<String, Vec<&'a jmcp_adapter_jeryu::EcosystemTool>>,
+    repo: &str,
+) -> Vec<&'a jmcp_adapter_jeryu::EcosystemTool> {
+    match tools_by_repo.get(repo) {
+        Some(tools) => tools.clone(),
+        None => Vec::new(),
+    }
+}
+
+fn repo_score_placement_fields(
+    repo: &str,
+    placement: Option<&UniversePlacement>,
+) -> (String, String, String, String) {
+    match placement {
+        Some(placement) => (
+            placement.current_task.clone(),
+            placement.branch.clone(),
+            placement.pool.clone(),
+            placement.placement.clone(),
+        ),
+        None => (
+            "unobserved".to_owned(),
+            "unobserved".to_owned(),
+            "unassigned".to_owned(),
+            repo.to_lowercase(),
+        ),
+    }
 }
 
 pub(crate) fn ecosystem_tools_by_repo(

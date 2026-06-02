@@ -9,6 +9,8 @@ mod voice;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod voice_client_tests;
 
 pub use config::TelegramConfig;
 pub use voice::{
@@ -80,6 +82,79 @@ impl TelegramBotClient {
         .await
     }
 
+    /// Resolve a `file_id` to a downloadable [`TelegramFile`] (`getFile`).
+    pub async fn get_file(&self, file_id: &str) -> Result<TelegramFile, TelegramApprovalError> {
+        self.post::<_, TelegramFile>("getFile", &serde_json::json!({ "file_id": file_id }))
+            .await
+    }
+
+    /// Download a file's raw bytes by its `file_path` (from [`Self::get_file`]).
+    pub async fn download_file(&self, file_path: &str) -> Result<Vec<u8>, TelegramApprovalError> {
+        let response = self
+            .http
+            .get(self.config.file_url(file_path))
+            .send()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("file download failed".to_owned()))?;
+        let bytes = response
+            .error_for_status()
+            .map_err(|err| TelegramApprovalError::ApiRejected(err.to_string()))?
+            .bytes()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("file read failed".to_owned()))?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Convenience: resolve a voice note's `file_id` and download its bytes.
+    pub async fn download_voice(&self, file_id: &str) -> Result<Vec<u8>, TelegramApprovalError> {
+        let file = self.get_file(file_id).await?;
+        let path = file.file_path.ok_or_else(|| {
+            TelegramApprovalError::Api("getFile returned no file_path".to_owned())
+        })?;
+        self.download_file(&path).await
+    }
+
+    /// Send an OGG/Opus voice note (`sendVoice`, multipart upload).
+    pub async fn send_voice(
+        &self,
+        chat_id: i64,
+        ogg_opus: Vec<u8>,
+        caption: Option<&str>,
+    ) -> Result<TelegramMessage, TelegramApprovalError> {
+        let part = reqwest::multipart::Part::bytes(ogg_opus)
+            .file_name("jmcp.ogg")
+            .mime_str("audio/ogg")
+            .map_err(|_| TelegramApprovalError::Api("voice part build failed".to_owned()))?;
+        let mut form = reqwest::multipart::Form::new()
+            .text("chat_id", chat_id.to_string())
+            .part("voice", part);
+        if let Some(caption) = caption {
+            form = form.text("caption", caption.to_owned());
+        }
+        let response = self
+            .http
+            .post(self.config.method_url("sendVoice"))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("sendVoice request failed".to_owned()))?;
+        let envelope: TelegramApiResponse<TelegramMessage> = response
+            .json()
+            .await
+            .map_err(|_| TelegramApprovalError::Api("sendVoice decode failed".to_owned()))?;
+        if envelope.ok {
+            envelope
+                .result
+                .ok_or(TelegramApprovalError::MalformedResponse)
+        } else {
+            Err(TelegramApprovalError::ApiRejected(
+                envelope
+                    .description
+                    .unwrap_or_else(|| "telegram api rejected sendVoice".to_owned()),
+            ))
+        }
+    }
+
     pub fn config(&self) -> &TelegramConfig {
         &self.config
     }
@@ -126,6 +201,26 @@ pub struct TelegramMessage {
     pub from: Option<TelegramUser>,
     pub chat: TelegramChat,
     pub text: Option<String>,
+    #[serde(default)]
+    pub voice: Option<TelegramVoice>,
+}
+
+/// A Telegram voice note attached to a message.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TelegramVoice {
+    pub file_id: String,
+    #[serde(default)]
+    pub duration: i64,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+}
+
+/// Result of `getFile` — the relative `file_path` used to download the bytes.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TelegramFile {
+    pub file_id: String,
+    #[serde(default)]
+    pub file_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

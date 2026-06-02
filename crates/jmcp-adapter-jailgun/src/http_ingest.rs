@@ -41,8 +41,8 @@ impl HttpJailgunRunClient {
         };
         Self {
             http,
-            base_url: std::env::var("JMCP_JAILGUN_URL").unwrap_or_default(),
-            token: std::env::var("JMCP_JAILGUN_TOKEN").unwrap_or_default(),
+            base_url: read_env_value("JMCP_JAILGUN_URL"),
+            token: read_env_value("JMCP_JAILGUN_TOKEN"),
         }
     }
 
@@ -177,13 +177,20 @@ fn validate_jailgun_base_url(base_url: &str) -> Result<&str> {
 
 fn url_is_authorized_for_local_submission(base_url: &str) -> bool {
     let normalized = base_url.trim().trim_end_matches('/');
-    std::env::var("JMCP_JAILGUN_ALLOWED_URLS")
-        .ok()
-        .map(|allowed| {
-            allowed
-                .split(',')
-                .map(|entry| entry.trim().trim_end_matches('/'))
-                .any(|entry| entry == normalized)
-        })
-        .unwrap_or(false)
+    match std::env::var("JMCP_JAILGUN_ALLOWED_URLS") {
+        Ok(allowed) => allowed
+            .split(',')
+            .map(|entry| entry.trim().trim_end_matches('/'))
+            .any(|entry| entry == normalized),
+        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotUnicode(_)) => false,
+    }
+}
+
+fn read_env_value(key: &str) -> String {
+    match std::env::var(key) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => String::new(),
+        Err(std::env::VarError::NotUnicode(_)) => String::new(),
+    }
 }

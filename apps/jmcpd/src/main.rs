@@ -20,8 +20,12 @@ mod dispatch_loop;
 mod telegram_helpers;
 #[cfg(test)]
 mod tests;
+mod voice_approval;
+mod voice_runtime;
 
 use crate::dispatch_loop::{dispatcher_loop, DispatcherConfig};
+use crate::voice_approval::VoiceChallengeBook;
+use crate::voice_runtime::{handle_voice_message, VoiceContext};
 
 use crate::telegram_helpers::{
     decide_from_telegram, emit_structured_event, status_from_telegram, submit_from_telegram,
@@ -46,6 +50,12 @@ struct Args {
         default_value = "jmcp.telegram.offset"
     )]
     telegram_offset_file: PathBuf,
+    /// Handle inbound voice notes (ASR) and risk-scored spoken approvals; requires the speech sidecars.
+    #[arg(long, env = "JMCP_TELEGRAM_VOICE", default_value_t = false)]
+    telegram_voice: bool,
+    /// Also speak replies back as Telegram voice notes (TTS).
+    #[arg(long, env = "JMCP_TELEGRAM_VOICE_REPLIES", default_value_t = true)]
+    telegram_voice_replies: bool,
     /// Enable the microtask dispatch loop (executes queued evidence-only microtasks).
     #[arg(long, env = "JMCP_DISPATCHER", default_value_t = false)]
     dispatcher_enabled: bool,
@@ -75,8 +85,12 @@ async fn main() -> Result<()> {
         let config = TelegramConfig::from_env_file(&args.telegram_env)?;
         let telegram_state = state.clone();
         let telegram_offset_file = args.telegram_offset_file.clone();
+        let voice = args.telegram_voice.then(|| {
+            VoiceContext::from_env(VoiceChallengeBook::new(), args.telegram_voice_replies)
+        });
         tokio::spawn(async move {
-            if let Err(err) = telegram_poll_loop(config, telegram_state, telegram_offset_file).await
+            if let Err(err) =
+                telegram_poll_loop(config, telegram_state, telegram_offset_file, voice).await
             {
                 emit_structured_event(
                     "error",
@@ -130,6 +144,7 @@ async fn telegram_poll_loop(
     config: TelegramConfig,
     state: AppState,
     offset_file: PathBuf,
+    voice: Option<VoiceContext>,
 ) -> Result<()> {
     let client = TelegramBotClient::new(config);
     let mut offset = read_telegram_offset(&offset_file)?;
@@ -174,7 +189,7 @@ async fn telegram_poll_loop(
             );
             offset = Some(next_offset);
             if let Some(message) = update.message {
-                if handle_telegram_message(&client, &state, message)
+                if handle_telegram_message(&client, &state, message, voice.as_ref())
                     .await
                     .is_err()
                 {
@@ -219,6 +234,7 @@ async fn handle_telegram_message(
     client: &TelegramBotClient,
     state: &AppState,
     message: TelegramMessage,
+    voice: Option<&VoiceContext>,
 ) -> Result<()> {
     let Some(user) = message.from.as_ref() else {
         return Ok(());
@@ -230,6 +246,22 @@ async fn handle_telegram_message(
                 "JMCP: this Telegram user or chat is not allowed.",
             )
             .await;
+        return Ok(());
+    }
+
+    // Inbound voice note -> ASR -> risk-scored spoken approval (before the
+    // text-only early return, since voice messages carry no text).
+    if let Some(note) = message.voice.as_ref() {
+        if let Some(voice) = voice {
+            handle_voice_message(client, state, voice, message.chat.id, user.id, note).await;
+        } else {
+            let _ = client
+                .send_message(
+                    message.chat.id,
+                    "JMCP voice handling is disabled. Start jmcpd with --telegram-voice.",
+                )
+                .await;
+        }
         return Ok(());
     }
 
@@ -274,12 +306,18 @@ async fn handle_telegram_message(
                     message.chat.id,
                     Some(ChronoDuration::minutes(15)),
                 )?;
-                let prompt = render_prompt(&TelegramApprovalChallenge {
+                let tg_challenge = TelegramApprovalChallenge {
                     work_order_id: work_order.id,
                     approver_user_id: user.id,
                     token: challenge.token,
                     expires_at: challenge.challenge.expires_at,
-                });
+                };
+                // Remember the plaintext token (in memory only) so a later voice
+                // note from this approver can be validated + applied.
+                if let Some(voice) = voice {
+                    voice.book.remember(tg_challenge.clone());
+                }
+                let prompt = render_prompt(&tg_challenge);
                 client
                     .send_message(
                         message.chat.id,
