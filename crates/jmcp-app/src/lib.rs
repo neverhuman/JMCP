@@ -3,6 +3,7 @@ mod tests;
 
 mod approval_flow;
 mod control_plane;
+mod control_plane_samples;
 mod runtime_health;
 
 use jcp_core::{Envelope, LocalSigner};
@@ -22,7 +23,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub use approval_flow::{local_actor, telegram_actor, telegram_approver};
-pub use control_plane::{
+pub use control_plane_samples::{
     attention_inbox_sample, incident_records_sample, inventory_cards_sample, memory_records_sample,
     promotion_decisions_sample, voice_sessions_sample,
 };
