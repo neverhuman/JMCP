@@ -1,10 +1,20 @@
 use super::*;
 use chrono::Duration as ChronoDuration;
 use jcp_core::Subject;
-use jmcp_domain::{ApprovalChallengeState, ApprovalDecision, WorkOrderStatus};
+use jmcp_domain::{ApprovalChallengeState, ApprovalDecision, HealthLevel, WorkOrderStatus};
 use serde_json::json;
-use std::str::FromStr;
+use std::{
+    net::TcpListener,
+    str::FromStr,
+    sync::{Mutex, MutexGuard},
+};
 use uuid::Uuid;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner())
+}
 
 fn state_with_work_order() -> (AppState, WorkOrder) {
     let state = AppState::new(SqliteStore::in_memory().unwrap());
@@ -149,6 +159,69 @@ fn blank_control_plane_surfaces_use_deterministic_samples() {
 }
 
 #[test]
+fn service_inventory_includes_jailgun() {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+
+    let cards = state.service_cards();
+    let jailgun = cards
+        .iter()
+        .find(|card| card.name == "jailgun")
+        .expect("jailgun service card");
+
+    assert!(jailgun.capabilities.contains(&"run-agent".to_owned()));
+    assert!(jailgun.capabilities.contains(&"review-packet".to_owned()));
+    assert!(state
+        .systems()
+        .iter()
+        .any(|system| system.name == "jailgun"));
+    assert!(state
+        .list_adapter_health()
+        .unwrap()
+        .iter()
+        .any(|health| health.name == "jailgun"));
+}
+
+#[test]
+fn runtime_health_reports_jailgun_config_states() {
+    let _guard = env_lock();
+    clear_jailgun_env();
+
+    let unconfigured = runtime_health::jailgun_health();
+    assert_eq!(unconfigured.health, HealthLevel::Degraded);
+    assert_eq!(unconfigured.endpoint, None);
+
+    std::env::set_var("JMCP_JAILGUN_URL", "http://127.0.0.1:1");
+    let missing_token = runtime_health::jailgun_health();
+    assert_eq!(missing_token.health, HealthLevel::Blocked);
+    assert!(missing_token.detail.contains("token"));
+
+    std::env::set_var("JMCP_JAILGUN_TOKEN", "secret");
+    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", "http://127.0.0.1:2");
+    let outside_policy = runtime_health::jailgun_health();
+    assert_eq!(outside_policy.health, HealthLevel::Blocked);
+    assert!(outside_policy
+        .detail
+        .contains("outside configured local submission policy"));
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let reachable = format!("http://{}", listener.local_addr().unwrap());
+    std::env::set_var("JMCP_JAILGUN_URL", &reachable);
+    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", &reachable);
+    let configured = runtime_health::jailgun_health();
+    assert_eq!(configured.health, HealthLevel::Nominal);
+
+    let dropped_addr = listener.local_addr().unwrap();
+    drop(listener);
+    let unreachable = format!("http://{dropped_addr}");
+    std::env::set_var("JMCP_JAILGUN_URL", &unreachable);
+    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", &unreachable);
+    let unreachable = runtime_health::jailgun_health();
+    assert_eq!(unreachable.health, HealthLevel::Degraded);
+
+    clear_jailgun_env();
+}
+
+#[test]
 fn voice_sessions_fall_back_to_samples_and_persist_intake() {
     let state = AppState::new(SqliteStore::in_memory().unwrap());
     assert!(!state.voice_sessions().unwrap().is_empty());
@@ -158,4 +231,10 @@ fn voice_sessions_fall_back_to_samples_and_persist_intake() {
 
     let sessions = state.voice_sessions().unwrap();
     assert_eq!(sessions, vec![session]);
+}
+
+fn clear_jailgun_env() {
+    std::env::remove_var("JMCP_JAILGUN_URL");
+    std::env::remove_var("JMCP_JAILGUN_TOKEN");
+    std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
 }

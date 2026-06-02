@@ -38,6 +38,58 @@ pub(crate) fn jeryu_health() -> AdapterHealth {
     }
 }
 
+pub(crate) fn jailgun_health() -> AdapterHealth {
+    let Some(url) = std::env::var("JMCP_JAILGUN_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return AdapterHealth {
+            name: "jailgun".to_owned(),
+            health: HealthLevel::Degraded,
+            endpoint: None,
+            detail: "Jailgun ingest is not configured".to_owned(),
+            checked_at: Utc::now(),
+        };
+    };
+
+    if std::env::var("JMCP_JAILGUN_TOKEN")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+    {
+        return AdapterHealth {
+            name: "jailgun".to_owned(),
+            health: HealthLevel::Blocked,
+            endpoint: Some(url),
+            detail: "Jailgun ingest token is not configured".to_owned(),
+            checked_at: Utc::now(),
+        };
+    }
+
+    if !url_has_policy_entry(&url, "JMCP_JAILGUN_ALLOWED_URLS") {
+        return AdapterHealth {
+            name: "jailgun".to_owned(),
+            health: HealthLevel::Blocked,
+            endpoint: Some(url),
+            detail: "Jailgun ingest endpoint is outside configured local submission policy"
+                .to_owned(),
+            checked_at: Utc::now(),
+        };
+    }
+
+    let health = health_for_url(&url);
+    AdapterHealth {
+        name: "jailgun".to_owned(),
+        health,
+        endpoint: Some(url),
+        detail: match health {
+            HealthLevel::Nominal => "Jailgun ingest is configured".to_owned(),
+            _ => "Jailgun configured but listener is not reachable".to_owned(),
+        },
+        checked_at: Utc::now(),
+    }
+}
+
 fn health_for_url(url: &str) -> HealthLevel {
     let Some(addr) = socket_addr_from_url(url) else {
         return HealthLevel::Degraded;
@@ -62,6 +114,19 @@ fn socket_addr_from_url(url: &str) -> Option<SocketAddr> {
         .to_socket_addrs()
         .ok()
         .and_then(|mut addrs| addrs.next())
+}
+
+fn url_has_policy_entry(url: &str, env_key: &str) -> bool {
+    let normalized = url.trim().trim_end_matches('/');
+    std::env::var(env_key)
+        .ok()
+        .map(|allowed| {
+            allowed
+                .split(',')
+                .map(|entry| entry.trim().trim_end_matches('/'))
+                .any(|entry| entry == normalized)
+        })
+        .unwrap_or(false)
 }
 
 pub(crate) fn command_available(command: &str) -> HealthLevel {

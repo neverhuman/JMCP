@@ -14,7 +14,7 @@ use jmcp_domain::{
     WorkOrder,
 };
 use jmcp_store::{SqliteStore, StoreError, StoredEvent};
-use runtime_health::{command_available, jeryu_health};
+use runtime_health::{command_available, jailgun_health, jeryu_health};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fmt;
@@ -142,17 +142,16 @@ impl AppState {
     }
 
     pub fn list_adapter_health(&self) -> AppResult<Vec<AdapterHealth>> {
-        let stored = self
+        let mut health = self
             .store
             .lock()
             .expect("store lock")
             .list_adapter_health()?;
-        if stored.iter().any(|health| health.name == "jeryu") {
-            return Ok(stored);
+        for detected in [jeryu_health(), jailgun_health()] {
+            if !health.iter().any(|item| item.name == detected.name) {
+                health.push(detected);
+            }
         }
-
-        let mut health = stored;
-        health.push(jeryu_health());
         Ok(health)
     }
 
@@ -185,6 +184,16 @@ impl AppState {
                 capabilities: vec!["health".to_owned(), "status".to_owned()],
             },
             ServiceCard {
+                name: "jailgun".to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                subjects: vec!["*/jailgun/*".to_owned()],
+                capabilities: vec![
+                    "bounded-chatgpt-capture".to_owned(),
+                    "run-agent".to_owned(),
+                    "review-packet".to_owned(),
+                ],
+            },
+            ServiceCard {
                 name: "jekko".to_owned(),
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 subjects: vec!["*/jekko/*".to_owned()],
@@ -195,6 +204,7 @@ impl AppState {
 
     pub fn systems(&self) -> Vec<SystemStatus> {
         let jeryu = jeryu_health();
+        let jailgun = jailgun_health();
         vec![
             SystemStatus {
                 name: "jmcpd".to_owned(),
@@ -219,6 +229,16 @@ impl AppState {
                 health: command_available("jankurai"),
                 jcp: jcp_core::JCP_VERSION.to_owned(),
                 latency: "local-cli".to_owned(),
+            },
+            SystemStatus {
+                name: "jailgun".to_owned(),
+                role: "bounded ChatGPT capture".to_owned(),
+                health: jailgun.health,
+                jcp: "adapter".to_owned(),
+                latency: match jailgun.endpoint {
+                    Some(endpoint) => endpoint,
+                    None => "not configured".to_owned(),
+                },
             },
             SystemStatus {
                 name: "jekko".to_owned(),

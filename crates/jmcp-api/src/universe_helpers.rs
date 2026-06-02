@@ -85,6 +85,7 @@ pub(crate) fn observed_repo_names(
         "Jeryu".to_owned(),
         "Jekko".to_owned(),
         "Jankurai".to_owned(),
+        "Jailgun".to_owned(),
     ]
 }
 
