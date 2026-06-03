@@ -38,6 +38,10 @@ Each release receipt records:
 
 Tag only after the receipt names the exact source commit and all required gates are green. Do not tag from an uncommitted worktree or from hosted-only state.
 
+## Remote Promotion
+
+Use `just publish-main` to promote a reviewed `main` tip to the GitHub remote. The command reruns the PR CI gates, confirms the branch is clean, and refuses any history that still contains merge commits since `github/main`. GitHub branch protection on `main` is intentionally linear, so squash or rebase feature work before promotion.
+
 ## Rollback
 
 Rollback restores the prior signed or reviewed artifact, restores the pre-migration SQLite copy when schema changed, reruns the affected smoke checks, and keeps mutating traffic closed until the rollback receipt is attached.

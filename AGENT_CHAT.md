@@ -1096,3 +1096,14 @@ State:
 - `main` is clean locally
 - merged and pruned the AIUX merge branches/worktrees
 - left unrelated unmerged branches alone
+
+2026-06-03T17:22:51Z — Codex added a linear promotion path for the protected GitHub `main` branch.
+New entrypoint:
+- `just publish-main`
+Behavior:
+- reruns the local PR CI gates (`ops/ci/ci.sh` + `ops/ci/conformance.sh`)
+- requires a clean `main`
+- rejects any merge commits since `github/main`
+- pushes only a linear `HEAD:main` to the GitHub remote
+Docs:
+- `docs/release-process.md` now documents the linear promotion requirement explicitly
