@@ -1,0 +1,362 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scene",
+  "type": "object",
+  "required": [
+    "accent",
+    "capturedAt",
+    "cards",
+    "generation",
+    "key",
+    "kind",
+    "layout",
+    "mode",
+    "narrationHint",
+    "status",
+    "title"
+  ],
+  "properties": {
+    "accent": {
+      "$ref": "#/definitions/Accent"
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Card"
+      }
+    },
+    "generation": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "key": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/definitions/PaneKind"
+    },
+    "layout": {
+      "$ref": "#/definitions/SceneLayout"
+    },
+    "mode": {
+      "$ref": "#/definitions/SceneMode"
+    },
+    "narrationHint": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/definitions/PaneStatus"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "Accent": {
+      "type": "string",
+      "enum": [
+        "purple",
+        "red",
+        "amber",
+        "green",
+        "blue",
+        "slate"
+      ]
+    },
+    "ActionMethod": {
+      "type": "string",
+      "enum": [
+        "get",
+        "post"
+      ]
+    },
+    "Card": {
+      "type": "object",
+      "required": [
+        "actions",
+        "drilldowns",
+        "evidenceRefs",
+        "id",
+        "kind",
+        "rank",
+        "rankReason",
+        "risk",
+        "status",
+        "title",
+        "whyNow"
+      ],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreparedAction"
+          }
+        },
+        "drilldowns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DrilldownRef"
+          }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DrilldownRef"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/CardKind"
+        },
+        "rank": {
+          "type": "number",
+          "format": "double"
+        },
+        "rankReason": {
+          "$ref": "#/definitions/RankReason"
+        },
+        "risk": {
+          "$ref": "#/definitions/RiskBand"
+        },
+        "status": {
+          "$ref": "#/definitions/CardStatus"
+        },
+        "title": {
+          "type": "string"
+        },
+        "whyNow": {
+          "type": "string"
+        }
+      }
+    },
+    "CardKind": {
+      "type": "string",
+      "enum": [
+        "queue_blocker",
+        "lease",
+        "approval",
+        "evidence",
+        "incident",
+        "adapter_health",
+        "replay",
+        "autonomy",
+        "memory"
+      ]
+    },
+    "CardStatus": {
+      "type": "string",
+      "enum": [
+        "probing",
+        "ranked",
+        "verified"
+      ]
+    },
+    "DrilldownKind": {
+      "type": "string",
+      "enum": [
+        "evidence",
+        "lease",
+        "approval",
+        "replay",
+        "system",
+        "raw"
+      ]
+    },
+    "DrilldownRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "target"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/DrilldownKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "PaneKind": {
+      "type": "string",
+      "enum": [
+        "queue",
+        "jeryu",
+        "jailgun",
+        "jekko",
+        "evidence",
+        "replay",
+        "approval",
+        "adapter_health",
+        "memory",
+        "autonomy"
+      ]
+    },
+    "PaneStatus": {
+      "type": "string",
+      "enum": [
+        "predicted",
+        "incubating",
+        "warm",
+        "active",
+        "degraded"
+      ]
+    },
+    "PreparedAction": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "method",
+        "ready",
+        "reason",
+        "safetyClass",
+        "target"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "method": {
+          "$ref": "#/definitions/ActionMethod"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "safetyClass": {
+          "$ref": "#/definitions/SafetyClass"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "RankFactorKind": {
+      "type": "string",
+      "enum": [
+        "risk",
+        "actionability",
+        "freshness",
+        "blast_radius",
+        "lease_pressure",
+        "user_relevance"
+      ]
+    },
+    "RankFactors": {
+      "type": "object",
+      "required": [
+        "actionability",
+        "blastRadius",
+        "freshness",
+        "leasePressure",
+        "risk",
+        "userRelevance"
+      ],
+      "properties": {
+        "actionability": {
+          "type": "number",
+          "format": "double"
+        },
+        "blastRadius": {
+          "type": "number",
+          "format": "double"
+        },
+        "freshness": {
+          "type": "number",
+          "format": "double"
+        },
+        "leasePressure": {
+          "type": "number",
+          "format": "double"
+        },
+        "risk": {
+          "type": "number",
+          "format": "double"
+        },
+        "userRelevance": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "RankReason": {
+      "type": "object",
+      "required": [
+        "dominantFactor",
+        "factors",
+        "score",
+        "summary"
+      ],
+      "properties": {
+        "dominantFactor": {
+          "$ref": "#/definitions/RankFactorKind"
+        },
+        "factors": {
+          "$ref": "#/definitions/RankFactors"
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "RiskBand": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "SafetyClass": {
+      "type": "string",
+      "enum": [
+        "read_only",
+        "bounded_auto",
+        "approval_required",
+        "manual_only"
+      ]
+    },
+    "SceneLayout": {
+      "type": "string",
+      "enum": [
+        "stack",
+        "timeline",
+        "matrix",
+        "drilldown"
+      ]
+    },
+    "SceneMode": {
+      "type": "string",
+      "enum": [
+        "focus",
+        "fan",
+        "compare",
+        "tunnel"
+      ]
+    }
+  }
+}

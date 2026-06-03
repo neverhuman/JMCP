@@ -30,6 +30,12 @@ impl SqliteStore {
             .query_row("select count(*) from events", [], |row| row.get(0))?)
     }
 
+    pub fn event_watermark(&self) -> StoreResult<i64> {
+        Ok(self
+            .conn
+            .query_row("select coalesce(max(id), 0) from events", [], |row| row.get(0))?)
+    }
+
     pub fn replay_work_orders(&self) -> StoreResult<Vec<WorkOrder>> {
         Ok(self
             .replay_projection()?

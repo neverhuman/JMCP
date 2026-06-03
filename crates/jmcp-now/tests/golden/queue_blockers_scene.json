@@ -1,0 +1,320 @@
+{
+  "key": "queue_blockers",
+  "kind": "queue",
+  "mode": "focus",
+  "accent": "purple",
+  "title": "What's blocking the queue?",
+  "layout": "stack",
+  "status": "active",
+  "generation": 42,
+  "capturedAt": "2025-01-01T12:00:00Z",
+  "cards": [
+    {
+      "id": "queue-card",
+      "kind": "queue_blocker",
+      "title": "queue-card title",
+      "status": "verified",
+      "rank": 0.75,
+      "risk": "high",
+      "whyNow": "queue-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "queue-card ranks here for a visible operational reason.",
+        "dominantFactor": "risk"
+      },
+      "evidenceRefs": [
+        {
+          "id": "drilldown:evidence:1",
+          "label": "evidence:1 drilldown",
+          "kind": "evidence",
+          "target": "targets/evidence:1"
+        }
+      ],
+      "drilldowns": [
+        {
+          "id": "drilldown:evidence",
+          "label": "evidence drilldown",
+          "kind": "evidence",
+          "target": "targets/evidence"
+        },
+        {
+          "id": "drilldown:lease",
+          "label": "lease drilldown",
+          "kind": "lease",
+          "target": "targets/lease"
+        },
+        {
+          "id": "drilldown:approval",
+          "label": "approval drilldown",
+          "kind": "approval",
+          "target": "targets/approval"
+        },
+        {
+          "id": "drilldown:replay",
+          "label": "replay drilldown",
+          "kind": "replay",
+          "target": "targets/replay"
+        },
+        {
+          "id": "drilldown:system",
+          "label": "system drilldown",
+          "kind": "system",
+          "target": "targets/system"
+        },
+        {
+          "id": "drilldown:raw",
+          "label": "raw drilldown",
+          "kind": "raw",
+          "target": "targets/raw"
+        }
+      ],
+      "actions": [
+        {
+          "id": "action:read",
+          "label": "read action",
+          "safetyClass": "read_only",
+          "ready": true,
+          "reason": "read action is governed by its safety class.",
+          "target": "targets/read",
+          "method": "get"
+        },
+        {
+          "id": "action:auto",
+          "label": "auto action",
+          "safetyClass": "bounded_auto",
+          "ready": true,
+          "reason": "auto action is governed by its safety class.",
+          "target": "targets/auto",
+          "method": "post"
+        },
+        {
+          "id": "action:approval",
+          "label": "approval action",
+          "safetyClass": "approval_required",
+          "ready": false,
+          "reason": "approval action is governed by its safety class.",
+          "target": "targets/approval",
+          "method": "post"
+        },
+        {
+          "id": "action:manual",
+          "label": "manual action",
+          "safetyClass": "manual_only",
+          "ready": false,
+          "reason": "manual action is governed by its safety class.",
+          "target": "targets/manual",
+          "method": "get"
+        }
+      ]
+    },
+    {
+      "id": "lease-card",
+      "kind": "lease",
+      "title": "lease-card title",
+      "status": "ranked",
+      "rank": 0.75,
+      "risk": "medium",
+      "whyNow": "lease-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "lease-card ranks here for a visible operational reason.",
+        "dominantFactor": "lease_pressure"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "approval-card",
+      "kind": "approval",
+      "title": "approval-card title",
+      "status": "probing",
+      "rank": 0.75,
+      "risk": "low",
+      "whyNow": "approval-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "approval-card ranks here for a visible operational reason.",
+        "dominantFactor": "actionability"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "evidence-card",
+      "kind": "evidence",
+      "title": "evidence-card title",
+      "status": "verified",
+      "rank": 0.75,
+      "risk": "medium",
+      "whyNow": "evidence-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "evidence-card ranks here for a visible operational reason.",
+        "dominantFactor": "freshness"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "incident-card",
+      "kind": "incident",
+      "title": "incident-card title",
+      "status": "ranked",
+      "rank": 0.75,
+      "risk": "high",
+      "whyNow": "incident-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "incident-card ranks here for a visible operational reason.",
+        "dominantFactor": "blast_radius"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "adapter-card",
+      "kind": "adapter_health",
+      "title": "adapter-card title",
+      "status": "ranked",
+      "rank": 0.75,
+      "risk": "medium",
+      "whyNow": "adapter-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "adapter-card ranks here for a visible operational reason.",
+        "dominantFactor": "user_relevance"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "replay-card",
+      "kind": "replay",
+      "title": "replay-card title",
+      "status": "verified",
+      "rank": 0.75,
+      "risk": "low",
+      "whyNow": "replay-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "replay-card ranks here for a visible operational reason.",
+        "dominantFactor": "freshness"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "autonomy-card",
+      "kind": "autonomy",
+      "title": "autonomy-card title",
+      "status": "ranked",
+      "rank": 0.75,
+      "risk": "medium",
+      "whyNow": "autonomy-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "autonomy-card ranks here for a visible operational reason.",
+        "dominantFactor": "actionability"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    },
+    {
+      "id": "memory-card",
+      "kind": "memory",
+      "title": "memory-card title",
+      "status": "ranked",
+      "rank": 0.75,
+      "risk": "low",
+      "whyNow": "memory-card is visible now because the queue is blocked.",
+      "rankReason": {
+        "score": 0.75,
+        "factors": {
+          "risk": 0.8,
+          "actionability": 0.7,
+          "freshness": 0.6,
+          "blastRadius": 0.5,
+          "leasePressure": 0.4,
+          "userRelevance": 0.3
+        },
+        "summary": "memory-card ranks here for a visible operational reason.",
+        "dominantFactor": "user_relevance"
+      },
+      "evidenceRefs": [],
+      "drilldowns": [],
+      "actions": []
+    }
+  ],
+  "narrationHint": "Name the highest ranked blocker, then show approval, lease, and evidence refs."
+}
