@@ -638,3 +638,7 @@ Implemented the first ephemeral JITUX API broker. Changed paths: `Cargo.toml`, `
 ## 2026-06-03T15:33:24Z - Codex (feature/aiux) - jmcp-now worker merge proof
 
 Merged Claude/Codex worker branch `aiux/ws-now-engine` into `feature/aiux`, adding the `jmcp-now` projection/ranker crate, queue blocker scene/golden tests, app event watermark hook, and replay read helper. Proof after integration: `rtk cargo test -p jmcp-now --locked` (8 passed, 1 ignored), `rtk cargo check -p jmcp-now --all-targets --locked`, and `rtk just score` (`score=92 raw=92 caps=0 findings=1`). Main worktree still has unrelated docs/release remediation WIP unstaged.
+
+## 2026-06-03T15:34:32Z - Codex (feature/aiux) - deck dependency worker merge proof
+
+Merged Claude/Codex worker branch `aiux/ws-deck-frontend` for the committed dependency slice only: `three`, `@react-three/fiber`, `@react-three/drei`, cockpit lockfile updates, and `apps/cockpit/JITUX_PROOF.md`. The worker's untracked runtime files under `/home/ubuntu/jmcp-worktrees/ws-deck/apps/cockpit/src/jitux/` were not merged because their frame shape needs reconciliation with the committed backend JITUX frame contract. Proof after dependency merge: `rtk npm --workspace @jmcp/cockpit run typecheck`, `rtk npm --workspace @jmcp/cockpit run test` (49 passed), `rtk npm --workspace @jmcp/cockpit run build`, and `rtk just score` (`score=92 raw=92 caps=0 findings=1`).
