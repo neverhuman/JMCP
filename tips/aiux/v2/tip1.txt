@@ -1,0 +1,517 @@
+The coolest version is a **3D Command Deck**: the Now pane becomes a living stack of “prepared views,” not a static page. The agent is constantly building, ranking, and warming panes in the background. The user sees 5–20 high-level previews in a fast 3D stack, and the active pane snaps forward only after it is already hydrated.
+
+The key design principle:
+
+**Never animate the agent’s uncertainty as slow loading. Animate the agent’s control as instant reorganization.**
+
+## The navigation concept: “Live Deck”
+
+The right side of the Now pane becomes a 3D stack of panes:
+
+```txt
+[ Active Focus Pane ]     [ tilted stacked previews ]
+                           JeRyu degraded
+                           AP-88 evidence gap
+                           Jekko throughput
+                           Jailgun authority
+                           Memory promotions
+                           Replay incidents
+                           Queue heat
+```
+
+Each preview is a miniature system pane with just enough information:
+
+```txt
+JeRyu
+high risk · 3 blockers · 1 action ready
+evidence 71% · last update 4s ago
+```
+
+The stack constantly reorders itself as the agent learns more. The top card is “most likely the user cares.” The bottom cards are still alive, still being updated, just lower priority.
+
+When the user says “drill into JeRyu,” the JeRyu preview does **not load**. It has already been incubated. It flies forward, expands, and becomes the active pane.
+
+## The best visual pattern
+
+I would build three layers:
+
+### 1. Active pane
+
+This is the real React/DOM pane. It contains full cards, buttons, evidence, drilldowns, actions, and text.
+
+Only **one** pane should be fully active.
+
+### 2. Warm panes
+
+Keep 2–4 likely next panes pre-rendered but hidden/offscreen. These are ready to become active instantly.
+
+Examples:
+
+```txt
+JeRyu drilldown
+AP-88 evidence
+Compare JeRyu/Jekko/Jailgun
+Autonomy actions
+```
+
+### 3. Preview deck
+
+The 5–20 card stack should be lightweight. Do **not** render 20 full React panes. Render preview models only: title, risk, counters, confidence, small sparkline, status chips.
+
+This is what makes it feel insane-fast.
+
+## Recommended frontend stack
+
+Use **Vite + React + TypeScript** as the main app shell. Vite is a strong fit because its dev architecture serves source code on demand over native ESM and uses HMR to update modules without full rebuilds, which is exactly the iteration speed you want for this kind of UI-heavy product. ([vitejs][1])
+
+For the 3D deck:
+
+```txt
+React
+TypeScript
+Vite
+Zustand
+TanStack Query
+Zod or Valibot
+Motion
+React Three Fiber
+Three.js
+Drei
+WebSocket client
+```
+
+The 3D layer should be **React Three Fiber + Three.js** for the deck, depth, lighting, parallax, connector lines, and background “agent organizing” visuals. React Three Fiber is a React renderer for Three.js, so it lets you compose interactive 3D scenes as React components while still using the React ecosystem. ([Poimandres Documentation][2])
+
+But do **not** put all real UI inside WebGL. The ideal setup is hybrid:
+
+```txt
+DOM / React:
+  active pane
+  buttons
+  evidence cards
+  text
+  forms
+  approvals
+
+React Three Fiber:
+  stacked preview deck
+  depth
+  glowing rails
+  background graph
+  motion trails
+  focus transitions
+```
+
+This gets you the cool 3D feel without sacrificing text clarity, accessibility, or interaction speed.
+
+## The actual UX I would build
+
+Call it **Agent Deck Mode**.
+
+When the agent takes charge:
+
+1. The Now nav turns purple.
+2. The main pane title changes instantly.
+3. A 3D stack appears on the right.
+4. Cards fly into ranked order.
+5. The active pane shows the current best answer.
+6. Background previews continue updating.
+7. The agent speaks after the visuals are already moving.
+
+Visually:
+
+```txt
+Now
+Agent is organizing live system state.
+
+┌───────────────────────────────┐   ╱ JeRyu
+│ Active: Queue heat             │  ╱  AP-88
+│                               │ ╱   Jekko
+│  #1 AP-88 evidence gap         │╱    Jailgun
+│  #2 JeRyu degraded             │     Memory
+│  #3 Jekko throughput drop      │     Replay
+└───────────────────────────────┘
+```
+
+The preview stack should support gestures and voice:
+
+```txt
+hover preview       -> peeks forward
+click preview       -> promotes pane
+voice “open AP-88”  -> AP-88 flies forward
+voice “compare all” -> stack explodes into lanes
+```
+
+## The killer behavior: Pane Incubation
+
+The agent should build panes before showing them.
+
+```ts
+type PaneStatus =
+  | "predicted"
+  | "incubating"
+  | "warm"
+  | "active"
+  | "stale"
+  | "discarded";
+```
+
+A pane starts as predicted, becomes incubating while data loads, becomes warm once it has enough structure, then can become active instantly.
+
+```ts
+type PaneVM = {
+  id: string;
+  kind:
+    | "queue"
+    | "incident"
+    | "system"
+    | "comparison"
+    | "evidence"
+    | "approval"
+    | "autonomy";
+
+  title: string;
+  subtitle?: string;
+
+  rank: number;
+  focusScore: number;
+  confidence: number;
+  severity: "low" | "medium" | "high" | "critical";
+
+  status: PaneStatus;
+
+  preview: {
+    headline: string;
+    chips: string[];
+    counters: Array<{ label: string; value: number | string }>;
+    sparkline?: number[];
+  };
+
+  cards: JituxCard[];
+  actions: JituxAction[];
+  evidenceRefs: string[];
+
+  predictedNext: string[];
+  updatedAt: string;
+  expiresAt?: string;
+};
+```
+
+The active pane is just one `PaneVM`. The stack is an ordered list of other `PaneVM`s.
+
+## JITUX event protocol
+
+The backend should stream UI intent as tiny events. Not full pages. Not prose. UI patches.
+
+```ts
+type DeckEvent =
+  | {
+      type: "agent.mode";
+      mode: "observing" | "taking_charge" | "awaiting_user";
+      accent: "green" | "purple";
+    }
+  | {
+      type: "deck.reset";
+      title: string;
+      subtitle?: string;
+    }
+  | {
+      type: "pane.predict";
+      pane: PaneVM;
+    }
+  | {
+      type: "pane.patch";
+      paneId: string;
+      patch: Partial<PaneVM>;
+    }
+  | {
+      type: "pane.warm";
+      paneId: string;
+      readyLevel: "preview" | "summary" | "full";
+    }
+  | {
+      type: "pane.activate";
+      paneId: string;
+      transition: "fly-forward" | "explode" | "swap" | "focus-tunnel";
+    }
+  | {
+      type: "deck.rank";
+      orderedPaneIds: string[];
+      reason: string;
+    }
+  | {
+      type: "card.patch";
+      paneId: string;
+      cardId: string;
+      patch: Partial<JituxCard>;
+    }
+  | {
+      type: "evidence.attach";
+      paneId: string;
+      cardId: string;
+      evidence: EvidenceItem[];
+    };
+```
+
+This lets the agent update the interface at reasoning speed.
+
+## Rust backend stack
+
+Use Rust as the realtime control layer:
+
+```txt
+axum
+tokio
+tower
+serde
+serde_json or simd-json
+schemars
+tokio-tungstenite or axum ws
+Postgres
+Redis
+NATS JetStream
+tracing
+opentelemetry
+```
+
+For a single-node MVP, WebSocket events can come directly from `tokio` channels.
+
+For production, use **NATS JetStream** as the event backbone. It supports streaming/replay behavior, and its docs describe replay policies that can deliver stored messages instantly or at original publish rate. That is perfect for restoring a user’s Now pane, replaying what the agent saw, or rehydrating another client. ([NATS Docs][3]) JetStream also has acknowledgment-based delivery semantics, which matters once these UI events become action-bearing system events. ([NATS Docs][3])
+
+The backend should have these services:
+
+```txt
+jmcp-server
+  WebSocket gateway
+  auth/session
+  pane stream
+
+jmcp-ranker
+  queue scoring
+  risk ranking
+  focus ordering
+
+jmcp-incubator
+  predicts next panes
+  builds warm panes
+  fetches evidence
+
+jmcp-adapters
+  JeRyu
+  Jekko
+  Jailgun
+  Replay
+  Memory
+  Approvals
+
+jmcp-eventlog
+  append-only JITUX stream
+  replay
+  audit
+
+jmcp-snapshot
+  hot in-memory system state
+```
+
+## If this becomes a desktop command center
+
+Use **Tauri** as the desktop wrapper, not Electron. Tauri is explicitly designed around a web frontend with backend logic in Rust, and its docs call out smaller bundle size via the system native webview plus compatibility with frontend frameworks. ([Tauri][4])
+
+That gives you:
+
+```txt
+Rust backend
+Vite/React frontend
+native desktop shell
+small app size
+local hot cache
+system tray / notifications later
+```
+
+## Performance model
+
+The trick is to target different speeds for different layers:
+
+```txt
+0–16ms:
+  Now turns purple
+  cached deck appears
+
+16–80ms:
+  preview panes rank
+  skeleton active pane appears
+
+80–250ms:
+  warm panes hydrate
+  top cards get evidence counters
+
+250–600ms:
+  active pane becomes detailed
+  actions attach
+  evidence expands
+
+600ms+:
+  agent voice explains what the user already sees
+```
+
+Do not wait for the model. Do not wait for all tools. Do not wait for complete evidence.
+
+Render immediately from the last known snapshot, then refine.
+
+## Frontend performance rules
+
+This is the part that makes it actually feel instant:
+
+```txt
+Only one full active pane.
+Only 2–4 warm panes.
+All other panes are previews.
+All animations use transform + opacity.
+No layout animation on width/height/top/left.
+No expensive shadows on 20 moving elements.
+Batch socket events per animation frame.
+Never rank in React render.
+Never fetch from a component during animation.
+Never mount huge evidence trees until active.
+```
+
+Use Zustand for hot animation state because you can update tiny slices without rerendering the whole app. Use TanStack Query for normal data fetching, not for the high-frequency deck stream.
+
+The deck reducer should look like this:
+
+```ts
+function applyDeckEvent(state: DeckState, event: DeckEvent): DeckState {
+  switch (event.type) {
+    case "pane.predict":
+      return upsertPane(state, event.pane);
+
+    case "pane.patch":
+      return patchPane(state, event.paneId, event.patch);
+
+    case "deck.rank":
+      return {
+        ...state,
+        orderedPaneIds: event.orderedPaneIds,
+        lastRankReason: event.reason,
+      };
+
+    case "pane.activate":
+      return activatePane(state, event.paneId, event.transition);
+
+    default:
+      return state;
+  }
+}
+```
+
+Then render order is just:
+
+```ts
+const panes = orderedPaneIds.map((id, index) => {
+  return {
+    pane: paneById[id],
+    transform: getDeckTransform(index, id === activePaneId),
+  };
+});
+```
+
+## 3D transform model
+
+The deck should feel physical and legible:
+
+```ts
+function getDeckTransform(index: number, active: boolean) {
+  if (active) {
+    return {
+      x: 0,
+      y: 0,
+      z: 80,
+      rotateY: 0,
+      rotateX: 0,
+      scale: 1,
+      opacity: 1,
+    };
+  }
+
+  return {
+    x: 720 + index * 18,
+    y: 80 + index * 22,
+    z: -index * 38,
+    rotateY: -18,
+    rotateX: 2,
+    scale: 1 - index * 0.025,
+    opacity: Math.max(0.35, 1 - index * 0.06),
+  };
+}
+```
+
+A card moving from rank 12 to rank 1 should not “teleport.” It should rocket forward, overshoot slightly, then settle. That communicates that the agent discovered something important.
+
+## The smartest interaction: focus without navigation
+
+The user should not feel like they are changing pages. They are changing **focus**.
+
+Examples:
+
+```txt
+“What’s hottest?”
+  Active pane: ranked queue
+  Stack: systems, evidence, incidents, approvals
+
+“Drill into JeRyu.”
+  JeRyu preview flies forward
+  AP-88 and Jekko stay visible behind it
+
+“Compare JeRyu and Jailgun.”
+  Stack explodes into two lanes
+  Shared blockers appear between them
+
+“Show evidence.”
+  Evidence cards fly into the active pane
+  Unsupported claims fade down
+```
+
+This makes the Now pane feel like a live command surface rather than a dashboard.
+
+## The ideal final architecture
+
+```txt
+Rust backend
+  axum websocket gateway
+  tokio async runtime
+  hot snapshot cache
+  ranker
+  pane incubator
+  adapter fanout
+  NATS JetStream event bus
+  Postgres durable state
+  Redis ephemeral cache
+
+Frontend
+  Vite
+  React
+  TypeScript
+  Zustand hot state
+  TanStack Query cold state
+  React Three Fiber / Three.js 3D deck
+  Motion for DOM transitions
+  Zod/Valibot event validation
+  Web Workers for local layout math if needed
+
+UX system
+  JITUX events
+  PaneVMs
+  preview deck
+  warm panes
+  active pane
+  evidence trays
+  action rails
+```
+
+The best possible feel: the user asks a question, the Now button goes purple, 12 panes materialize in a tilted stack, the agent ranks them live, JeRyu shoots to the top, AP-88 evidence cards attach behind it, Jailgun drops lower, and the active pane is already built before the first spoken sentence finishes.
+
+[1]: https://vite.dev/guide/why.html "Why Vite | Vite"
+[2]: https://r3f.docs.pmnd.rs/getting-started/introduction "Introduction - React Three Fiber"
+[3]: https://docs.nats.io/nats-concepts/jetstream "JetStream | NATS Docs"
+[4]: https://v2.tauri.app/start/ "What is Tauri? | Tauri"
+

@@ -566,3 +566,7 @@ running 30B+API: "how is JMCP doing?" -> jmcp_status -> "healthy with 4 systems 
 jmcpd, jeryu, jankurai, jekko"; "queue the microtask" -> model asks to confirm first (no
 auto-confirm). Did NOT touch the other uncommitted WIP (services/speech/*, crates/jmcp-adapter-
 speech/*, docs/*) — left for its owner.
+
+## 2026-06-03T14:56:39Z - Codex (feature/aiux) - CLAIM: dirty WIP reconciliation only
+
+Claiming `/home/ubuntu/jmcp` for dirty WIP review/preservation only after publishing Jeryu PR #59. Scope is to identify and preserve or hand off voice/speech/AIUX WIP before any scheduler work. I will not implement scheduler/dispatcher changes in this claim, and I will not modify Rust crates, apps, package files, scripts, CI, schemas, or `tips/` except as needed to preserve the currently untracked `tips/aiux/` material.

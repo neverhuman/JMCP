@@ -1,0 +1,271 @@
+Absolutely. The direction here is **AI-as-live-control-plane narrator**, not “chatbot that later updates a dashboard.” The agent should visually seize the **Now pane** the instant it starts thinking, show what it is checking, stream ranked findings, and pre-stage likely next moves before the spoken/audio answer catches up.
+
+I read the repo at the level available from GitHub. JMCP is already framed perfectly for this: it is a Joint Master Control Plane with a Rust authority API, SQLite event store, CLI, Rust TUI, React cockpit, Telegram intake/approvals, and adapter boundaries for Jankurai, Jeryu, Jailgun, and Jekko. ([GitHub][1]) The cockpit is described as the primary visual dashboard for work orders, approvals, evidence, systems, replay, and the Jeryu ecosystem graph, which means the Now pane should become the agent’s **live projection surface** rather than a static dashboard. ([GitHub][1])
+
+## Core UX concept: the Now pane becomes “Agent Live Mode”
+
+When the user asks anything system-related, the left nav stays fixed, but **Now turns purple** and enters an “agent taking charge” state.
+
+The center pane should immediately transform into a live “what I’m looking at” surface:
+
+1. **0–80ms:** Now button pulses purple, title changes from `Now` to `Now · Agent Live`, cards ghost in with “checking queue / evidence / adapters / approvals.”
+2. **80–250ms:** Last known projections appear instantly from local cache: queue rank, blocked work orders, adapter health, risk deltas.
+3. **250–700ms:** Fresh facts stream in as animated patches. Cards reorder, counters tick, risk ring rotates, evidence chips attach to cards.
+4. **700ms+:** Agent starts speaking, but the UI has already shown the story: “I’m checking Jailgun, Jeryu graph, AP-88 evidence gap, adapter leases.”
+5. **During reasoning:** The pane keeps moving: discovered issues fly in, low-confidence items stay translucent, verified items snap solid.
+6. **Before user asks follow-up:** The pane already preloads drill-downs: evidence, replay, approval, adapter trace, proposed action.
+
+This is the key product shift: **the visual answer arrives before the verbal answer.**
+
+## Top 10 questions that should produce killer live results
+
+These are the prompts I would design the system around because each one creates a rich, moving Now pane:
+
+1. **“What’s blocking the queue right now?”**
+   Live ranking of blockers, adapter gaps, approval waits, expired leases, stale evidence, and suggested unblock actions.
+
+2. **“Why is JPCM stream degraded?”**
+   Show transport health, event lag, projection age, dropped/late events, adapter heartbeat, and replay comparison.
+
+3. **“Drill into Jeryu.”**
+   Flip Now into a live ecosystem graph: affected nodes, dependency edges, trust/authority boundaries, recent deltas, and blast radius.
+
+4. **“What should I approve or deny?”**
+   Rank approval challenges by urgency, evidence quality, expiry, downside risk, and “safe to approve” confidence.
+
+5. **“Show me what Jailgun is doing.”**
+   Live run queue, active captures, failed runs, review packets, token/URL policy checks, and which JMCP work orders are waiting on it. The repo says JMCP submits `jailgun.run`, `jailgun.capture`, and `jailgun.deploy` work orders to Jailgun over HTTP with `POST /api/runs`. ([GitHub][1])
+
+6. **“What can you safely auto-fix?”**
+   Show bounded autonomous actions, confidence, evidence available, stage/time caps, and why each action does or does not require approval. JMCP already exposes autonomous actions through `GET /autonomous-actions` and `POST /autonomous-actions/:id/submit`, routed through signed JCP envelopes without bypassing leases, evidence, replay, approvals, or adapter health. ([GitHub][1])
+
+7. **“Replay the incident.”**
+   Animate a timeline: event stream, expected projection, actual projection, divergence point, evidence links, and policy-test candidates.
+
+8. **“What changed in the last 10 minutes?”**
+   Rank deltas by impact: new work orders, state changes, approvals expiring, degraded systems, promoted memory, failed adapters.
+
+9. **“Which tool is lying / stale / behind?”**
+   Compare projections across JMCP API, TUI, cockpit, adapter health, event store, and replay. The Rust TUI reads the same JMCP API projections as the cockpit, which makes projection parity a great first-class diagnostic. ([GitHub][1])
+
+10. **“Run the safest next action.”**
+    Now pane becomes a command cockpit: proposed action, evidence, reversible steps, blast radius, approval requirement, dry-run result, then execute.
+
+## The JITUX protocol: JSON patches for AI-driven UI
+
+The agent should never “navigate the UI.” It should emit structured **Just-In-Time UX** patches into the Now pane.
+
+The key is to separate **reasoning**, **data fetching**, **visual projection**, and **spoken narration**. The UI subscribes to a stream like this:
+
+```json
+{
+  "type": "jitux.frame",
+  "v": 1,
+  "seq": 1842,
+  "trace_id": "tr_01jpcm_live",
+  "pane": "now",
+  "mode": "agent_live",
+  "accent": "purple",
+  "narration": {
+    "state": "pre_speech",
+    "caption": "Checking queue, evidence, adapters, and replay..."
+  },
+  "mutations": [
+    {
+      "op": "metric.set",
+      "id": "decision_packets",
+      "label": "Decision packets",
+      "value": 2,
+      "trend": "stable"
+    },
+    {
+      "op": "card.upsert",
+      "id": "ap-88",
+      "rank": 1,
+      "severity": "high",
+      "title": "Quarantine bridge until service card lands",
+      "why_now": "Adapter lacks evidence-backed write lease.",
+      "confidence": 0.87,
+      "evidence_refs": ["ev_lease_gap", "ev_adapter_health"],
+      "actions": ["keep_read_only", "collect_missing_evidence"]
+    },
+    {
+      "op": "drill.prefetch",
+      "id": "ap-88",
+      "panes": ["evidence", "replay", "adapter_trace", "approval"]
+    }
+  ]
+}
+```
+
+For graph-heavy questions:
+
+```json
+{
+  "type": "jitux.frame",
+  "v": 1,
+  "pane": "now",
+  "mode": "agent_live",
+  "layout": "ecosystem_graph",
+  "mutations": [
+    {
+      "op": "graph.patch",
+      "id": "jeryu_ecosystem",
+      "nodes": [
+        { "id": "jeryu", "kind": "system", "health": "ok" },
+        { "id": "jailgun", "kind": "adapter", "health": "degraded" },
+        { "id": "ap-88", "kind": "work_order", "risk": "high" }
+      ],
+      "edges": [
+        { "from": "ap-88", "to": "jailgun", "label": "waiting_on_capture" },
+        { "from": "jailgun", "to": "jeryu", "label": "evidence_feed" }
+      ],
+      "focus": ["ap-88", "jailgun"]
+    }
+  ]
+}
+```
+
+For an action-ready result:
+
+```json
+{
+  "type": "jitux.action_packet",
+  "v": 1,
+  "id": "act_collect_ap88_evidence",
+  "label": "Collect missing evidence",
+  "status": "ready",
+  "requires_approval": false,
+  "risk": "low",
+  "estimated_time_ms": 1800,
+  "preflight": {
+    "leases": "read_only",
+    "replay_safe": true,
+    "adapter_health": "sufficient"
+  },
+  "primary_button": "Run now",
+  "secondary_button": "Show proof"
+}
+```
+
+## Backend architecture: Rust owns truth, React owns motion
+
+The repo already points toward the correct split: Rust authority API, SQLite event store, React cockpit, CLI/TUI, adapters, approvals. ([GitHub][1]) I would extend that into this pipeline:
+
+```text
+User voice/text
+   ↓
+Agent Orchestrator
+   ↓ emits intent immediately
+JITUX Stream Broker  ───────────────→ React Now Pane
+   ↓                                  ↑
+Rust Projection Engine                |
+   ↓                                  |
+SQLite WAL/event store                |
+   ↓                                  |
+Adapters: Jeryu / Jailgun / Jekko / Jankurai
+```
+
+Use **Rust/Axum/Tokio** for the fast stream broker and projection server. Use **SQLite WAL** as the durable event log, with in-memory hot projections for queue, systems, approvals, evidence, replay, and ecosystem graph.
+
+For the frontend: **Vite + React + TypeScript**, with a tiny local store dedicated to JITUX frames. Do not force everything through heavyweight global state. The Now pane should be able to process 30–60 small UI patches per second without blocking the rest of the cockpit.
+
+Recommended transport:
+
+```text
+GET /jitux/stream?conversation_id=...
+Server-Sent Events for simple ordered patch stream
+
+or
+
+WS /jitux/live
+WebSocket when bidirectional pane interaction is needed
+```
+
+I would start with **SSE for visual patches** because it is simple, ordered, and very fast for server-to-client updates. Use WebSocket only for live user interactions inside generated drill-downs.
+
+## The Now pane should have reusable “AI scene types”
+
+Instead of hand-building every possible view, define a finite set of dynamic scene primitives:
+
+```ts
+type NowScene =
+  | "attention_inbox"
+  | "queue_ranker"
+  | "system_health"
+  | "adapter_trace"
+  | "evidence_ladder"
+  | "replay_timeline"
+  | "approval_court"
+  | "ecosystem_graph"
+  | "autonomous_actions"
+  | "incident_story";
+```
+
+Each scene supports the same patch ops:
+
+```ts
+type JituxOp =
+  | "scene.set"
+  | "metric.set"
+  | "card.upsert"
+  | "card.remove"
+  | "rank.reorder"
+  | "timeline.append"
+  | "graph.patch"
+  | "evidence.attach"
+  | "risk.set"
+  | "drill.prefetch"
+  | "action.prepare"
+  | "toast.emit"
+  | "caption.set";
+```
+
+That gives you infinite-feeling UI without infinite bespoke components.
+
+## Make it feel alive
+
+The motion language matters a ton.
+
+Cards should not just appear; they should **race into rank**. Risk chips should flip from “checking” to “verified.” Evidence should magnetize onto the card that needed it. Graph nodes should pulse when the agent reads them. The big risk ring in the screenshot should become a live “current highest risk” dial, rotating as the ranker changes.
+
+When the agent is taking control:
+
+* Now nav item turns purple.
+* The header says: `Agent Live · inspecting queue`.
+* A thin purple scanline passes over the pane.
+* Cards stream in with source tags: `event_store`, `approval`, `jailgun`, `jeryu`, `replay`.
+* Unverified items are translucent.
+* Verified items snap solid.
+* Suggested actions appear pre-warmed, not after the answer.
+
+## What to implement first
+
+Build the first vertical slice around this question:
+
+**“What’s blocking the queue right now?”**
+
+It should trigger:
+
+1. `scene.set: queue_ranker`
+2. `metric.set` for blocked, urgent, approvals, degraded adapters
+3. `card.upsert` for top blockers
+4. `evidence.attach` for each blocker
+5. `drill.prefetch` for evidence/replay/adapter trace
+6. `action.prepare` for the safest next action
+7. Spoken answer starts only after the visual pane is already populated
+
+That one slice proves the whole idea.
+
+## The killer product principle
+
+The agent should not say, “Let me check.”
+
+It should **show the check happening**.
+
+Then it should not say, “Here are options.”
+
+It should have already ranked the options, prefetched the drill-downs, staged the safest action, and made the Now pane feel like the system itself is thinking in front of the user.
+
+[1]: https://github.com/neverhuman/jmcp/ "GitHub - neverhuman/JMCP: Joint Master Control Plane · GitHub"
+
