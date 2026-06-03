@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stripWakeWord } from "./hooks/useVoiceAssistant";
 import {
   VOICE_MODEL,
-  micSupported,
   reason,
   reasonStream,
   synthesize,
   transcribe,
 } from "./lib/speechClient";
+import {
+  describeMicrophoneError,
+  micSupported,
+  type MicrophoneInspection,
+} from "./lib/microphone";
 import { VOICE_TOOL_SPECS, executeVoiceTool } from "./lib/voiceTools";
 
 // A minimal stand-in for the Fetch API Response surface that speechClient reads:
@@ -255,6 +259,21 @@ describe("reasonStream", () => {
     expect(result.toolCalls).toEqual([{ id: "call_1", name: "jmcp_status", arguments: "{}" }]);
   });
 
+  it("normalizes no-argument tool calls to JSON objects for the next LLM hop", async () => {
+    installFetch(() =>
+      Promise.resolve(
+        streamResponse([
+          toolLine({ index: 0, id: "call_1", function: { name: "microtask_queue" } }),
+          "data: [DONE]\n\n",
+        ]),
+      ),
+    );
+
+    const result = await reasonStream([{ role: "user", content: "queue?" }], () => undefined);
+
+    expect(result.toolCalls).toEqual([{ id: "call_1", name: "microtask_queue", arguments: "{}" }]);
+  });
+
   it("includes the tools array in the request when provided", async () => {
     const fetchDouble = installFetch(() => Promise.resolve(streamResponse(["data: [DONE]\n\n"])));
     await reasonStream(
@@ -314,6 +333,19 @@ describe("voiceTools", () => {
     expect(spoken).toContain("2 completed");
   });
 
+  it("summarizes the current queue from the work-order list", async () => {
+    const fetchDouble = installFetch(() =>
+      Promise.resolve(jsonResponse([{ status: "Submitted" }, { status: "Running" }])),
+    );
+
+    const spoken = await executeVoiceTool("microtask_queue", "{}");
+
+    expect(spoken).toContain("2 microtasks");
+    expect(spoken).toContain("1 Submitted");
+    expect(spoken).toContain("1 Running");
+    expect(fetchDouble.mock.calls[0][0]).toContain("/work-orders");
+  });
+
   it("refuses a state change without confirmation and does not POST", async () => {
     const fetchDouble = installFetch(() => Promise.resolve(jsonResponse({})));
     const spoken = await executeVoiceTool(
@@ -361,15 +393,27 @@ describe("synthesize", () => {
 
 describe("micSupported", () => {
   let savedMediaDevices: MediaDevices | undefined;
+  let savedSecureContext: boolean | undefined;
+  let savedMediaRecorder: typeof MediaRecorder | undefined;
 
   beforeEach(() => {
     savedMediaDevices = navigator.mediaDevices;
+    savedSecureContext = window.isSecureContext;
+    savedMediaRecorder = window.MediaRecorder;
   });
 
   afterEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: savedMediaDevices,
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: savedSecureContext,
+    });
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: savedMediaRecorder,
     });
   });
 
@@ -379,5 +423,75 @@ describe("micSupported", () => {
       value: undefined,
     });
     expect(micSupported()).toBe(false);
+  });
+
+  it("requires a secure browser context", () => {
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: class MediaRecorderDouble {},
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn() },
+    });
+
+    expect(micSupported()).toBe(false);
+  });
+
+  it("is true when secure capture and MediaRecorder are available", () => {
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: class MediaRecorderDouble {},
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn() },
+    });
+
+    expect(micSupported()).toBe(true);
+  });
+
+  it("explains when Chrome cannot see an input device", () => {
+    const inspection: MicrophoneInspection = {
+      secureContext: true,
+      supported: true,
+      permissionState: "granted",
+      audioInputCount: 0,
+      labeledAudioInputCount: 0,
+      devicesError: null,
+    };
+
+    const message = describeMicrophoneError(
+      new DOMException("Requested device not found", "NotFoundError"),
+      inspection,
+    );
+
+    expect(message).toContain("Chrome cannot see a microphone input");
+  });
+
+  it("explains denied browser permission", () => {
+    const inspection: MicrophoneInspection = {
+      secureContext: true,
+      supported: true,
+      permissionState: "denied",
+      audioInputCount: 1,
+      labeledAudioInputCount: 1,
+      devicesError: null,
+    };
+
+    const message = describeMicrophoneError(
+      new DOMException("Permission denied", "NotAllowedError"),
+      inspection,
+    );
+
+    expect(message).toContain("Browser denied microphone access");
   });
 });

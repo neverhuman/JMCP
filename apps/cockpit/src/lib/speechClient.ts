@@ -4,6 +4,8 @@
 // and no audio ever leaves the machine. Responses are narrowed from `unknown`
 // with explicit guards (matching runtime-api-guards.ts) — never `as`-cast.
 
+export { micSupported } from "./microphone";
+
 export interface Transcription {
   text: string;
   confidence: number | null;
@@ -259,15 +261,11 @@ export async function reasonStream(
     }
   }
   const ordered = [...callsByIndex.entries()].sort((a, b) => a[0] - b[0]);
-  return { text: full.trim(), toolCalls: ordered.map((entry) => entry[1]) };
-}
-
-/** True when this browser can capture a microphone (guards SSR / test / insecure-origin). */
-export function micSupported(): boolean {
-  return (
-    typeof navigator !== "undefined" &&
-    typeof navigator.mediaDevices?.getUserMedia === "function" &&
-    typeof window !== "undefined" &&
-    typeof window.MediaRecorder === "function"
-  );
+  return {
+    text: full.trim(),
+    toolCalls: ordered.map((entry) => {
+      const call = entry[1];
+      return { ...call, arguments: call.arguments.trim().length > 0 ? call.arguments : "{}" };
+    }),
+  };
 }

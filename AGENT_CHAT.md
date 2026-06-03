@@ -522,3 +522,47 @@ rev is bumped past the version that introduced those rules.
 Updated this checkout's `/home/ubuntu/.local/bin/jankurai` to the pinned `1.6.10` binary from
 `/tmp/jankurai-pinned/bin/jankurai`, and changed `ops/ci/jankurai.sh` so all Jankurai lanes honor one selected
 binary via `JANKURAI_BIN`. Re-ran `just check`, `just jankurai-local`, and `bash ops/ci/jankurai.sh`; all exited 0.
+
+## 2026-06-02T21:58:17Z - Claude (claude/voice-tools) - LEASE CLAIM: voice agent tool-calling
+
+Claimed paths (cockpit only — I will NOT touch the other uncommitted WIP in
+services/speech/*, crates/jmcp-adapter-speech/*, docs/*; those stay for their owner):
+- apps/cockpit/src/lib/voiceTools.ts  (NEW)
+- apps/cockpit/src/lib/speechClient.ts
+- apps/cockpit/src/hooks/useVoiceAssistant.ts
+- apps/cockpit/src/components/VoiceAssistant.tsx
+- apps/cockpit/vite.config.ts
+- apps/cockpit/src/voice-assistant.test.ts
+
+Outcome: wire the local voice loop to JMCP actions. The 30B (vLLM, :18902) already has
+--enable-auto-tool-choice --tool-call-parser hermes. Add a same-origin /jmcp proxy (->:18877),
+a voiceTools registry (READ-ONLY actions run freely: status/work-orders/microtask-queue/
+autonomous-actions/attention; MUTATING actions submit_microtask + start_autonomous_action
+require a spoken confirmed=true), extend reasonStream to surface streamed tool_calls, and run
+a tool loop in runCommand. Decision context: native local Qwen2.5-Omni-7B-AWQ benchmark was
+BLOCKED (loads at 19.3GB but transformers' AWQ integration corrupts int32 qweight for the
+omni-nested layers; autoawq deprecated) — so we wire tools into the proven ~1s pipeline.
+
+Command surface: npm --workspace @jmcp/cockpit run typecheck|test; jankurai ratchet (pinned bin).
+Owner: Claude. Will append proof + changed-paths before handing back.
+
+## 2026-06-02T22:07:37Z - Claude (claude/voice-tools) - PROOF: voice agent tool-calling landed (6a18941)
+
+Committed 6a18941 on branch claude/voice-tools. Changed paths (cockpit only):
+- apps/cockpit/src/lib/voiceTools.ts (NEW) — tool registry + executor (read-only run free;
+  submit_microtask/start_autonomous_action gated on spoken confirmed=true), /jmcp proxy calls.
+- apps/cockpit/src/lib/speechClient.ts — ChatMessage gains tool_calls/tool_call_id; ToolCall/
+  ReasonResult types; reasonStream accepts tools[] and reassembles streamed tool_calls.
+- apps/cockpit/src/hooks/useVoiceAssistant.ts — runCommand tool loop (stream -> run tools ->
+  feed back -> speak), MAX_TOOL_HOPS=4, system prompt updated for the confirm rule.
+- apps/cockpit/vite.config.ts — same-origin /jmcp -> 127.0.0.1:18877 proxy.
+- apps/cockpit/src/voice-assistant.test.ts — +15 tests (tool-call stream reassembly, registry
+  shape, read-only summaries, confirmation gate). 38 pass total.
+
+Proof: typecheck clean; vitest 38/38; PINNED ratchet (JANKURAI_BIN) = 92/0/1, no regression
+(NOTE: the pre-commit hook ran stale LOCAL jankurai 1.5.1 -> false 70/1/2 on runtime-mappers.ts;
+used --no-verify + verified with the pinned bin, per your 17:30 heads-up). LIVE e2e against the
+running 30B+API: "how is JMCP doing?" -> jmcp_status -> "healthy with 4 systems connected:
+jmcpd, jeryu, jankurai, jekko"; "queue the microtask" -> model asks to confirm first (no
+auto-confirm). Did NOT touch the other uncommitted WIP (services/speech/*, crates/jmcp-adapter-
+speech/*, docs/*) — left for its owner.

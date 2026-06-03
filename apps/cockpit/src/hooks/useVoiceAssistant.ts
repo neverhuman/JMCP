@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   VOICE_MODEL,
-  micSupported,
   reasonStream,
   synthesize,
   transcribe,
   type ChatMessage,
   type ToolCallFunction,
 } from "../lib/speechClient";
+import { micSupported, requestMicrophoneStream } from "../lib/microphone";
 import { VOICE_TOOL_SPECS, executeVoiceTool } from "../lib/voiceTools";
 
 // Always-listening, privacy-first voice assistant. The mic runs continuously in
@@ -408,10 +408,9 @@ export function useVoiceAssistant(): VoiceAssistantApi {
   const start = useCallback(async () => {
     if (!supported || stateRef.current !== "off") return;
     setError(null);
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      stream = await requestMicrophoneStream();
       streamRef.current = stream;
       const ctx = new AudioContext();
       ctxRef.current = ctx;
@@ -452,6 +451,10 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         }
       }, 50);
     } catch (err) {
+      if (stream !== null) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+      streamRef.current = null;
       setError(err instanceof Error ? err.message : "microphone permission denied");
       setBoth("error");
     }

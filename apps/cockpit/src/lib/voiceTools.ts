@@ -257,7 +257,7 @@ export async function executeVoiceTool(
   try {
     if (name === "jmcp_status") return summarizeStatus(await getJson("/health", signal));
     if (name === "list_work_orders") return summarizeWorkOrders(await getJson("/work-orders", signal));
-    if (name === "microtask_queue") return summarizeQueue(await getJson("/microtasks/queue", signal));
+    if (name === "microtask_queue") return summarizeQueue(await getJson("/work-orders", signal));
     if (name === "list_autonomous_actions") return summarizeActions(await getJson("/autonomous-actions", signal));
     if (name === "attention_inbox") return summarizeAttention(await getJson("/attention-packets", signal));
     if (name === "submit_microtask") return await submitMicrotask(args, signal);
