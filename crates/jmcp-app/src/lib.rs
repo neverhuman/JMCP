@@ -339,6 +339,10 @@ impl AppState {
             .rebuild_work_order_projection_from_events()?)
     }
 
+    pub fn event_watermark(&self) -> AppResult<i64> {
+        Ok(self.store.lock().expect("store lock").event_watermark()?)
+    }
+
     pub fn events_after(&self, after: i64) -> AppResult<Vec<StoredEvent>> {
         Ok(self.store.lock().expect("store lock").events_after(after)?)
     }

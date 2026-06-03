@@ -160,8 +160,8 @@ async fn main() -> Result<()> {
                     match demo.listen(reply_voice, seconds).await? {
                         Some(result) => {
                             println!(
-                                "[recv] {}s voice -> ASR: {:?}",
-                                result.voice_duration.unwrap_or_default(),
+                                "[recv] voice_duration={} -> ASR: {:?}",
+                                format_voice_duration(result.voice_duration),
                                 result.transcript
                             );
                             println!(
@@ -257,4 +257,26 @@ async fn read_json_response(path: &str, response: reqwest::Response) -> Result<V
         anyhow::bail!("JMCP API {path} returned {status}: {text}");
     }
     Ok(serde_json::from_str(&text)?)
+}
+
+fn format_voice_duration(duration: Option<i64>) -> String {
+    match duration {
+        Some(seconds) => format!("{seconds}s"),
+        None => "not-measured".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_voice_duration;
+
+    #[test]
+    fn formats_measured_voice_duration() {
+        assert_eq!(format_voice_duration(Some(7)), "7s");
+    }
+
+    #[test]
+    fn formats_unmeasured_voice_duration() {
+        assert_eq!(format_voice_duration(None), "not-measured");
+    }
 }

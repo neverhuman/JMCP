@@ -6,12 +6,16 @@ use uuid::Uuid;
 mod approvals;
 mod control;
 mod errors;
+mod jitux;
 
+#[cfg(test)]
+mod jitux_tests;
 #[cfg(test)]
 mod tests;
 
 pub use control::*;
 pub use errors::*;
+pub use jitux::*;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WorkOrderStatus {
