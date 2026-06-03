@@ -42,13 +42,20 @@ pub fn work_order_with_evidence(id: Uuid, subject: &str, status: WorkOrderStatus
     work_order
 }
 
-pub fn attention_packet(work_order_id: Option<Uuid>, why_now: &str, level: AttentionLevel) -> jmcp_domain::AttentionPacket {
+pub fn attention_packet(
+    work_order_id: Option<Uuid>,
+    why_now: &str,
+    level: AttentionLevel,
+) -> jmcp_domain::AttentionPacket {
     jmcp_domain::AttentionPacket {
         id: uuid("33333333-3333-4333-8333-333333333333"),
         work_order_id,
         title: "Queue blocker attention".to_owned(),
         why_now: why_now.to_owned(),
-        alternatives: vec!["Keep the queue read-only".to_owned(), "Promote after evidence lands".to_owned()],
+        alternatives: vec![
+            "Keep the queue read-only".to_owned(),
+            "Promote after evidence lands".to_owned(),
+        ],
         risk_delta: "This moves the queue toward write authority.".to_owned(),
         drill_down: "Inspect the blocker scene and its sidecars.".to_owned(),
         level,
@@ -100,4 +107,3 @@ pub fn incident_record(
         updated_at: fixed_time() - Duration::minutes(30),
     }
 }
-

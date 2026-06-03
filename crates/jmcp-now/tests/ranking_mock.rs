@@ -2,12 +2,12 @@ mod mock_support;
 
 use chrono::Duration;
 use jmcp_domain::{DeckRankReason, WorkOrderStatus};
+use jmcp_now::NowReads;
 use jmcp_now::{queue_blockers_projection, rank_inputs, rank_reason, RankInput};
 use mock_support::{
     approval_challenge, attention_packet, fixed_time, incident_record, lease, uuid, work_order,
     work_order_with_evidence,
 };
-use jmcp_now::NowReads;
 
 fn base_rank_input() -> RankInput {
     RankInput {
@@ -25,7 +25,11 @@ fn base_rank_input() -> RankInput {
     }
 }
 
-fn only_factor(mut input: RankInput, setter: impl FnOnce(&mut RankInput, f32), value: f32) -> RankInput {
+fn only_factor(
+    mut input: RankInput,
+    setter: impl FnOnce(&mut RankInput, f32),
+    value: f32,
+) -> RankInput {
     setter(&mut input, value);
     input
 }
@@ -37,26 +41,37 @@ fn reason_score(input: RankInput) -> f32 {
 #[test]
 fn each_scalar_factor_is_monotonic() {
     let mut cases: Vec<(&str, Box<dyn Fn(RankInput, f32) -> RankInput>)> = vec![
-        ("risk", Box::new(|input, value| only_factor(input, |input, v| input.risk = v, value))),
+        (
+            "risk",
+            Box::new(|input, value| only_factor(input, |input, v| input.risk = v, value)),
+        ),
         (
             "blockedness",
             Box::new(|input, value| only_factor(input, |input, v| input.blockedness = v, value)),
         ),
         (
             "adapter_degraded_weight",
-            Box::new(|input, value| only_factor(input, |input, v| input.adapter_degraded_weight = v, value)),
+            Box::new(|input, value| {
+                only_factor(input, |input, v| input.adapter_degraded_weight = v, value)
+            }),
         ),
         (
             "evidence_gap_weight",
-            Box::new(|input, value| only_factor(input, |input, v| input.evidence_gap_weight = v, value)),
+            Box::new(|input, value| {
+                only_factor(input, |input, v| input.evidence_gap_weight = v, value)
+            }),
         ),
         (
             "user_query_relevance",
-            Box::new(|input, value| only_factor(input, |input, v| input.user_query_relevance = v, value)),
+            Box::new(|input, value| {
+                only_factor(input, |input, v| input.user_query_relevance = v, value)
+            }),
         ),
         (
             "downstream_blast_radius",
-            Box::new(|input, value| only_factor(input, |input, v| input.downstream_blast_radius = v, value)),
+            Box::new(|input, value| {
+                only_factor(input, |input, v| input.downstream_blast_radius = v, value)
+            }),
         ),
     ];
 
@@ -95,7 +110,9 @@ fn approval_and_lease_pressure_follow_the_expected_tiers() {
     );
     let missing = rank_reason(&base_rank_input(), fixed_time());
 
-    assert!(near_expiry.factors.approval_expiry_pressure > boundary.factors.approval_expiry_pressure);
+    assert!(
+        near_expiry.factors.approval_expiry_pressure > boundary.factors.approval_expiry_pressure
+    );
     assert_eq!(boundary.factors.approval_expiry_pressure, 0.0);
     assert_eq!(expired.factors.approval_expiry_pressure, 1.0);
     assert_eq!(missing.factors.approval_expiry_pressure, 0.0);
@@ -182,7 +199,7 @@ fn weighted_sum_differs_from_zeroing_only_by_positive_components() {
                 + 0.05
                 + 0.05
                 + 0.10))
-        .abs()
+            .abs()
             < 0.0001
     );
 }
@@ -208,7 +225,13 @@ fn stable_tie_break_uses_id_ascending() {
         now,
     );
 
-    assert_eq!(ranked.iter().map(|ranked| ranked.input.id.as_str()).collect::<Vec<_>>(), vec!["wo-a", "wo-b", "wo-c"]);
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|ranked| ranked.input.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wo-a", "wo-b", "wo-c"]
+    );
 }
 
 #[test]
@@ -237,7 +260,11 @@ fn dominant_factor_matches_the_highest_weighted_contribution() {
 fn downstream_blast_radius_rises_with_status_and_incident_membership() {
     let submitted = queue_blockers_projection(
         &NowReads {
-            work_orders: vec![work_order(uuid("22222222-2222-4222-8222-222222222221"), "Submitted", WorkOrderStatus::Submitted)],
+            work_orders: vec![work_order(
+                uuid("22222222-2222-4222-8222-222222222221"),
+                "Submitted",
+                WorkOrderStatus::Submitted,
+            )],
             autonomous_actions: Vec::new(),
             ..NowReads::default()
         },
@@ -245,7 +272,11 @@ fn downstream_blast_radius_rises_with_status_and_incident_membership() {
     );
     let failed = queue_blockers_projection(
         &NowReads {
-            work_orders: vec![work_order(uuid("22222222-2222-4222-8222-222222222222"), "Failed", WorkOrderStatus::Failed)],
+            work_orders: vec![work_order(
+                uuid("22222222-2222-4222-8222-222222222222"),
+                "Failed",
+                WorkOrderStatus::Failed,
+            )],
             autonomous_actions: Vec::new(),
             ..NowReads::default()
         },
@@ -253,7 +284,11 @@ fn downstream_blast_radius_rises_with_status_and_incident_membership() {
     );
     let incident_boosted = queue_blockers_projection(
         &NowReads {
-            work_orders: vec![work_order(uuid("22222222-2222-4222-8222-222222222223"), "Incident", WorkOrderStatus::Submitted)],
+            work_orders: vec![work_order(
+                uuid("22222222-2222-4222-8222-222222222223"),
+                "Incident",
+                WorkOrderStatus::Submitted,
+            )],
             incidents: vec![incident_record(
                 uuid("22222222-2222-4222-8222-222222222223"),
                 jmcp_domain::IncidentSeverity::Critical,
@@ -265,9 +300,18 @@ fn downstream_blast_radius_rises_with_status_and_incident_membership() {
         fixed_time(),
     );
 
-    let submitted_factor = submitted.rank_reasons[0].reason.factors.downstream_blast_radius;
-    let failed_factor = failed.rank_reasons[0].reason.factors.downstream_blast_radius;
-    let incident_factor = incident_boosted.rank_reasons[0].reason.factors.downstream_blast_radius;
+    let submitted_factor = submitted.rank_reasons[0]
+        .reason
+        .factors
+        .downstream_blast_radius;
+    let failed_factor = failed.rank_reasons[0]
+        .reason
+        .factors
+        .downstream_blast_radius;
+    let incident_factor = incident_boosted.rank_reasons[0]
+        .reason
+        .factors
+        .downstream_blast_radius;
 
     assert!(failed_factor > submitted_factor);
     assert!(incident_factor >= failed_factor);
@@ -285,27 +329,46 @@ fn approval_and_autonomous_paths_can_coexist_without_secret_material() {
             )],
             leases: vec![lease(work_order_id, "jmcpd", 10)],
             approval_challenges: vec![approval_challenge(work_order_id, 20)],
-            attention_packets: vec![attention_packet(Some(work_order_id), "Attention owns the why-now headline.", jmcp_domain::AttentionLevel::Page)],
+            attention_packets: vec![attention_packet(
+                Some(work_order_id),
+                "Attention owns the why-now headline.",
+                jmcp_domain::AttentionLevel::Page,
+            )],
             incidents: vec![incident_record(
                 work_order_id,
                 jmcp_domain::IncidentSeverity::Major,
                 "Queue blocker incident",
             )],
-            autonomous_actions: jmcp_app::AppState::new(jmcp_store::SqliteStore::in_memory().unwrap())
-                .list_autonomous_actions()
-                .unwrap(),
+            autonomous_actions: jmcp_app::AppState::new(
+                jmcp_store::SqliteStore::in_memory().unwrap(),
+            )
+            .list_autonomous_actions()
+            .unwrap(),
         },
         fixed_time(),
     );
 
     let pane = &projection.panes[0];
-    assert!(pane.preview.headline.contains("Attention owns the why-now headline."));
+    assert!(pane
+        .preview
+        .headline
+        .contains("Attention owns the why-now headline."));
     assert!(pane.preview.chips.contains(&"awaiting_approval".to_owned()));
     assert!(pane.preview.chips.contains(&"lease".to_owned()));
     assert!(pane.preview.chips.contains(&"approval_required".to_owned()));
     assert!(pane.preview.chips.contains(&"evidence".to_owned()));
-    assert!(pane.preview.chips.iter().any(|chip| chip.starts_with("incident_")));
-    assert!(pane.prepared_tabs.contains(&jmcp_domain::PreparedTab::Evidence));
-    assert!(pane.prepared_tabs.contains(&jmcp_domain::PreparedTab::Actions));
-    assert!(pane.prepared_tabs.contains(&jmcp_domain::PreparedTab::Systems));
+    assert!(pane
+        .preview
+        .chips
+        .iter()
+        .any(|chip| chip.starts_with("incident_")));
+    assert!(pane
+        .prepared_tabs
+        .contains(&jmcp_domain::PreparedTab::Evidence));
+    assert!(pane
+        .prepared_tabs
+        .contains(&jmcp_domain::PreparedTab::Actions));
+    assert!(pane
+        .prepared_tabs
+        .contains(&jmcp_domain::PreparedTab::Systems));
 }
