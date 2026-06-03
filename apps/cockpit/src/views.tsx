@@ -12,7 +12,10 @@ import type {
   SystemNode,
   WorkItem,
 } from "./types";
+import { useEffect } from "react";
 import type { RuntimeState } from "./runtime";
+import { NowCommandDeck } from "./jitux/components/NowCommandDeck";
+import { deckStore, useDeckSnapshot } from "./jitux/store";
 import {
   AttentionPacketCard,
   EmptyCard,
@@ -27,6 +30,13 @@ import {
 } from "./views-extra";
 
 export function NowView({ runtime }: { runtime: RuntimeState }) {
+  const deckActive = useDeckSnapshot((state) => state.active);
+  useEffect(() => {
+    if (!deckActive) {
+      deckStore.startLiveQueueBlockers(runtime);
+    }
+    return () => {};
+  }, [deckActive, runtime]);
   const blocked = runtime.workItems.filter((item) => item.state === "blocked").length;
   const decisionPackets = runtime.attentionPackets.filter((packet) => packet.decisionNeeded).length;
   const urgentPackets = runtime.attentionPackets.filter(
@@ -35,6 +45,10 @@ export function NowView({ runtime }: { runtime: RuntimeState }) {
   const voiceConfirmations = runtime.voiceThreads.filter((thread) => thread.requiresResponse).length;
   const activePromotions = runtime.memoryLessons.filter((lesson) => lesson.state === "promoted").length;
   const topRisk = runtime.attentionPackets.reduce((highest, packet) => (riskRank(packet.riskDelta.to) > riskRank(highest) ? packet.riskDelta.to : highest), "low" as Risk);
+
+  if (deckActive) {
+    return <NowCommandDeck />;
+  }
 
   return (
     <div className="dashboard-grid now-layout">
