@@ -5,6 +5,13 @@ import {
   type ToolCallFunction,
 } from "./speechClient";
 import { FIRST_CHUNK_CHARS, MAX_TOOL_HOPS } from "./voiceAssistantConfig";
+import {
+  JITUX_FIRST_FRAME_TIMEOUT_MS,
+  openVoiceJituxSession,
+  waitForUsefulVoiceDeckFrame,
+  type VoiceJituxDeckReadiness,
+  type VoiceJituxSessionStart,
+} from "./voiceJituxSession";
 import { VOICE_TOOL_SPECS, executeVoiceTool } from "./voiceTools";
 
 interface VoiceTurnOptions {
@@ -13,6 +20,13 @@ interface VoiceTurnOptions {
   signal: AbortSignal;
   enqueueSpeech: (text: string, signal?: AbortSignal) => void;
   setThinking: () => void;
+  openDeckSession?: (prompt: string, signal: AbortSignal) => Promise<VoiceJituxSessionStart>;
+  waitForDeckFrame?: (
+    start: Promise<VoiceJituxSessionStart>,
+    signal: AbortSignal,
+    timeoutMs: number,
+  ) => Promise<VoiceJituxDeckReadiness>;
+  deckFrameTimeoutMs?: number;
 }
 
 type FastReadOnlyTool =
@@ -64,12 +78,27 @@ export async function runVoiceTurn({
   signal,
   enqueueSpeech,
   setThinking,
+  openDeckSession = openVoiceJituxSession,
+  waitForDeckFrame = waitForUsefulVoiceDeckFrame,
+  deckFrameTimeoutMs = JITUX_FIRST_FRAME_TIMEOUT_MS,
 }: VoiceTurnOptions): Promise<string> {
   history.push({ role: "user", content: command });
+  const deckSession = openDeckSession(command, signal);
+  const deckReadiness = waitForDeckFrame(deckSession, signal, deckFrameTimeoutMs).catch(
+    (error: unknown): VoiceJituxDeckReadiness => ({
+      kind: "unavailable",
+      reason: error instanceof Error ? error.message : "jitux_wait_error",
+    }),
+  );
+  const enqueueDeckAwareSpeech = createDeckAwareSpeechQueue(
+    enqueueSpeech,
+    deckReadiness,
+    signal,
+  );
   const fastDecision = detectFastReadOnlyTool(command);
   if (fastDecision.kind === "local_tool") {
     const output = await executeVoiceTool(fastDecision.tool, "{}", signal);
-    enqueueSpeech(output, signal);
+    enqueueDeckAwareSpeech(output);
     history.push({ role: "assistant", content: output });
     trimHistory(history);
     return output;
@@ -82,7 +111,7 @@ export async function runVoiceTurn({
     if (chunks !== null) {
       let consumed = 0;
       for (const chunk of chunks) {
-        enqueueSpeech(chunk, signal);
+        enqueueDeckAwareSpeech(chunk);
         consumed += chunk.length;
       }
       pending = pending.slice(consumed);
@@ -91,7 +120,7 @@ export async function runVoiceTurn({
     if (force) {
       const lastSpace = pending.lastIndexOf(" ");
       if (lastSpace > 12) {
-        enqueueSpeech(pending.slice(0, lastSpace), signal);
+        enqueueDeckAwareSpeech(pending.slice(0, lastSpace));
         pending = pending.slice(lastSpace + 1);
         firstChunk = false;
       }
@@ -111,7 +140,7 @@ export async function runVoiceTurn({
     pending = "";
     firstChunk = true;
     const result = await reasonStream(history, onDelta, signal, VOICE_MODEL, VOICE_TOOL_SPECS);
-    enqueueSpeech(pending, signal);
+    enqueueDeckAwareSpeech(pending);
     pending = "";
     lastText = result.text;
     if (result.toolCalls.length === 0) {
@@ -138,4 +167,34 @@ function trimHistory(history: ChatMessage[]): void {
   if (history.length <= 13) return;
   const trimmed = [history[0], ...history.slice(history.length - 12)];
   history.splice(0, history.length, ...trimmed);
+}
+
+function createDeckAwareSpeechQueue(
+  enqueueSpeech: (text: string, signal?: AbortSignal) => void,
+  deckReadiness: Promise<VoiceJituxDeckReadiness>,
+  signal: AbortSignal,
+): (text: string) => void {
+  let ready = false;
+  const pending: string[] = [];
+  const release = () => {
+    if (ready) {
+      return;
+    }
+    ready = true;
+    for (const text of pending) {
+      enqueueSpeech(text, signal);
+    }
+    pending.splice(0, pending.length);
+  };
+  void deckReadiness.then(release, release);
+  return (text: string) => {
+    if (text.trim().length === 0) {
+      return;
+    }
+    if (ready) {
+      enqueueSpeech(text, signal);
+      return;
+    }
+    pending.push(text);
+  };
 }

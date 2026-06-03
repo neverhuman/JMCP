@@ -14,6 +14,12 @@ import {
 } from "./lib/microphone";
 import { VOICE_TOOL_SPECS, executeVoiceTool } from "./lib/voiceTools";
 import { detectFastReadOnlyTool, runVoiceTurn } from "./lib/voiceAssistantTurn";
+import {
+  openVoiceJituxSession,
+  waitForUsefulVoiceDeckFrame,
+  type VoiceJituxDeckReadiness,
+  type VoiceJituxSessionStart,
+} from "./lib/voiceJituxSession";
 
 // A minimal stand-in for the Fetch API Response surface that speechClient reads:
 // `.ok`, `.json()`, and `.blob()`. Each test builds one of these via the helpers
@@ -72,6 +78,19 @@ function installFetch(impl: FetchSignature): ReturnType<typeof vi.fn<FetchSignat
   const fetchDouble = vi.fn<FetchSignature>(impl);
   vi.stubGlobal("fetch", fetchDouble);
   return fetchDouble;
+}
+
+function immediateDeck() {
+  return {
+    openDeckSession: vi.fn(
+      (): Promise<VoiceJituxSessionStart> =>
+        Promise.resolve({ kind: "unavailable", reason: "test" }),
+    ),
+    waitForDeckFrame: vi.fn(
+      (): Promise<VoiceJituxDeckReadiness> =>
+        Promise.resolve({ kind: "unavailable", reason: "test" }),
+    ),
+  };
 }
 
 afterEach(() => {
@@ -166,6 +185,69 @@ describe("transcribe", () => {
   it("throws when the sidecar response is not ok", async () => {
     installFetch(() => Promise.resolve(jsonResponse({}, false, 503)));
     await expect(transcribe(new Blob())).rejects.toThrow("ASR 503");
+  });
+});
+
+describe("voice JITUX sessions", () => {
+  it("opens a Mission Deck session through the local JMCP proxy", async () => {
+    const fetchDouble = installFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          sessionId: "jitux_1",
+          streamUrl: "/jitux/sessions/jitux_1/stream",
+          wsUrl: "/jitux/sessions/jitux_1/ws",
+        }),
+      ),
+    );
+
+    const result = await openVoiceJituxSession("what is blocking the queue?");
+
+    expect(result).toEqual({
+      kind: "ready",
+      session: {
+        sessionId: "jitux_1",
+        streamUrl: "/jitux/sessions/jitux_1/stream",
+        wsUrl: "/jitux/sessions/jitux_1/ws",
+      },
+    });
+    expect(fetchDouble.mock.calls[0][0]).toBe("/jmcp/jitux/sessions");
+    expect(fetchDouble.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchDouble.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ prompt: "what is blocking the queue?", source: "voice" }),
+    );
+  });
+
+  it("resolves readiness when the stream emits a useful deck frame", async () => {
+    const frame = {
+      v: 1,
+      sessionId: "jitux_1",
+      seq: 1,
+      frameId: "frame_1",
+      emittedAt: "2026-06-03T15:00:00.000Z",
+      source: "projection",
+      type: "deck.patch",
+      deck: { title: "Scanning queue blockers", active: true, mode: "mission_deck" },
+    };
+    installFetch(() =>
+      Promise.resolve(
+        streamResponse([`event: jitux.frame\ndata: ${JSON.stringify(frame)}\n\n`]),
+      ),
+    );
+
+    const result = await waitForUsefulVoiceDeckFrame(
+      Promise.resolve({
+        kind: "ready",
+        session: {
+          sessionId: "jitux_1",
+          streamUrl: "/jitux/sessions/jitux_1/stream",
+          wsUrl: "/jitux/sessions/jitux_1/ws",
+        },
+      }),
+      new AbortController().signal,
+      50,
+    );
+
+    expect(result).toEqual({ kind: "frame", sessionId: "jitux_1", frameType: "deck.patch" });
   });
 });
 
@@ -391,6 +473,7 @@ describe("runVoiceTurn fast path", () => {
   });
 
   it("answers status through the local tool before model reasoning", async () => {
+    const deck = immediateDeck();
     const fetchDouble = installFetch((input) => {
       if (input.includes("/jmcp/health")) {
         return Promise.resolve(
@@ -408,6 +491,7 @@ describe("runVoiceTurn fast path", () => {
       signal: new AbortController().signal,
       enqueueSpeech: (text) => spoken.push(text),
       setThinking: vi.fn(),
+      ...deck,
     });
 
     expect(answer).toContain("JMCP is healthy");
@@ -415,6 +499,88 @@ describe("runVoiceTurn fast path", () => {
     expect(fetchDouble).toHaveBeenCalledTimes(1);
     expect(fetchDouble.mock.calls[0][0]).toContain("/jmcp/health");
     expect(history[history.length - 1]).toMatchObject({ role: "assistant", content: answer });
+    expect(deck.openDeckSession.mock.invocationCallOrder[0]).toBeLessThan(
+      deck.waitForDeckFrame.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("starts deck work before model reasoning", async () => {
+    const events: string[] = [];
+    const deck = {
+      openDeckSession: vi.fn((): Promise<VoiceJituxSessionStart> => {
+        events.push("jitux");
+        return Promise.resolve({ kind: "unavailable", reason: "test" });
+      }),
+      waitForDeckFrame: vi.fn((): Promise<VoiceJituxDeckReadiness> => {
+        events.push("deck_wait");
+        return Promise.resolve({ kind: "unavailable", reason: "test" });
+      }),
+    };
+    installFetch(() => {
+      events.push("llm");
+      return Promise.resolve(
+        streamResponse([
+          'data: {"choices":[{"delta":{"content":"Ready."}}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      );
+    });
+    const spoken: string[] = [];
+
+    const answer = await runVoiceTurn({
+      command: "explain the current mission",
+      history: [{ role: "system", content: "system" }],
+      signal: new AbortController().signal,
+      enqueueSpeech: (text) => {
+        events.push("speech");
+        spoken.push(text);
+      },
+      setThinking: vi.fn(),
+      ...deck,
+    });
+
+    expect(answer).toBe("Ready.");
+    expect(spoken).toEqual(["Ready."]);
+    expect(events).toEqual(["jitux", "deck_wait", "llm", "speech"]);
+  });
+
+  it("holds first speech until a deck frame or timeout releases it", async () => {
+    let releaseDeck = (_value: VoiceJituxDeckReadiness) => {};
+    const deck = {
+      openDeckSession: vi.fn(
+        (): Promise<VoiceJituxSessionStart> =>
+          Promise.resolve({ kind: "unavailable", reason: "test" }),
+      ),
+      waitForDeckFrame: vi.fn(
+        (): Promise<VoiceJituxDeckReadiness> =>
+          new Promise((resolve) => {
+            releaseDeck = resolve;
+          }),
+      ),
+    };
+    installFetch((input) => {
+      if (input.includes("/jmcp/health")) {
+        return Promise.resolve(jsonResponse({ ok: true, systems: [{ name: "jmcpd" }] }));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${input}`));
+    });
+    const spoken: string[] = [];
+
+    const answer = await runVoiceTurn({
+      command: "status",
+      history: [{ role: "system", content: "system" }],
+      signal: new AbortController().signal,
+      enqueueSpeech: (text) => spoken.push(text),
+      setThinking: vi.fn(),
+      ...deck,
+    });
+
+    expect(answer).toContain("JMCP is healthy");
+    expect(spoken).toEqual([]);
+    releaseDeck({ kind: "timeout" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(spoken).toEqual([answer]);
   });
 });
 
