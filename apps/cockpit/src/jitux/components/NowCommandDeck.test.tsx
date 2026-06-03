@@ -1,4 +1,5 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../App";
 import { createFixtureRuntime } from "../../runtime";
@@ -84,6 +85,53 @@ describe("NowCommandDeck", () => {
 
     expect(screen.getByLabelText("Mission Deck viewport")).toHaveAttribute("data-motion", "reduced");
     expect(screen.getByRole("list", { name: "Ranked Mission Deck" })).toBeInTheDocument();
+  });
+
+  it("renders the sparse active-deck warming focus state without panes or trace probes", () => {
+    act(() =>
+      deckStore.dispatch({
+        v: 1,
+        sessionId: "jitux_sparse",
+        seq: 1,
+        frameId: "jitux_sparse.1",
+        emittedAt: "2026-06-03T15:00:00.000Z",
+        source: "projection",
+        type: "deck.patch",
+        deck: { title: "Sparse Mission Deck", active: true, mode: "mission_deck" },
+      }),
+    );
+
+    render(<NowCommandDeck />);
+
+    expect(screen.getByLabelText("AIUX Mission Deck")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sparse Mission Deck" })).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Mission trace")).getByText("running")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Ranked Mission Deck" })).queryAllByRole("listitem")).toEqual([]);
+    expect(screen.getByLabelText("Focus pane")).toBeInTheDocument();
+    expect(screen.getByText("Focus is warming")).toBeInTheDocument();
+  });
+
+  it("fans, collapses, and promotes a pane through deck controls", async () => {
+    const user = userEvent.setup();
+    applyQueueBlockerFrames();
+
+    render(<NowCommandDeck />);
+
+    const deck = screen.getByLabelText("AIUX Mission Deck");
+    expect(deck).toHaveAttribute("data-view-mode", "stack");
+
+    await user.click(screen.getByRole("button", { name: "Fan panes" }));
+    expect(deck).toHaveAttribute("data-view-mode", "fan");
+
+    await user.click(screen.getByRole("button", { name: "Collapse panes" }));
+    expect(deck).toHaveAttribute("data-view-mode", "stack");
+
+    await user.click(screen.getByRole("button", { name: "Promote Approval gate" }));
+
+    expect(deckStore.getSnapshot().focusPaneId).toBe("approval_gate");
+    expect(screen.getByLabelText("2. Approval gate")).toHaveAttribute("data-lod", "focus");
+    expect(screen.getByLabelText("1. Queue blocker")).toHaveAttribute("data-lod", "preview");
+    expect(screen.getAllByText("Approval gate was promoted by direct user focus.")).toHaveLength(2);
   });
 
   it("auto-ignites purple takeover on the Now rail item", async () => {

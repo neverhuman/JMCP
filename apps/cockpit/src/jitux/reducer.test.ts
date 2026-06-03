@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isJituxFrame } from "./guards";
 import { initialJituxState, reduceJituxFrame } from "./reducer";
+import { createQueueBlockerFrames, initialDeckState } from "./store";
+import { createFixtureRuntime } from "../runtime";
 import type { DeckRankReason, JituxFrame, PaneVM } from "./types";
 
 const reason: DeckRankReason = {
@@ -133,5 +135,45 @@ describe("JITUX guards and reducer", () => {
 
     expect(older.title).toBe("Fresh");
     expect(older.lastSeq).toBe(3);
+  });
+
+  it("accepts a new session even when its sequence restarts at one", () => {
+    const firstSession = reduceJituxFrame(
+      initialJituxState,
+      frame({
+        type: "deck.patch",
+        seq: 9,
+        deck: { title: "First session", active: true, mode: "mission_deck" },
+      }),
+    );
+    const secondSession = reduceJituxFrame(firstSession, {
+      ...frame({
+        type: "deck.patch",
+        seq: 1,
+        deck: { title: "Second session", active: true, mode: "mission_deck" },
+      }),
+      sessionId: "jitux_next",
+      frameId: "jitux_next.1",
+    });
+
+    expect(secondSession.sessionId).toBe("jitux_next");
+    expect(secondSession.title).toBe("Second session");
+    expect(secondSession.lastSeq).toBe(1);
+  });
+
+  it("keeps generated Mission Deck frames strictly sequenced and replay-stable", () => {
+    const frames = createQueueBlockerFrames(createFixtureRuntime(), "jitux_sequence");
+    const state = frames.reduce(reduceJituxFrame, initialDeckState);
+
+    expect(frames.map((item) => item.seq)).toEqual(frames.map((_, index) => index + 1));
+    expect(new Set(frames.map((item) => item.frameId)).size).toBe(frames.length);
+    expect(state.sessionId).toBe("jitux_sequence");
+    expect(state.lastSeq).toBe(frames.length);
+    expect(state.paneOrder[0]).toBe("queue_blockers");
+    expect(state.actionsByPane.queue_blockers.map((action) => action.id)).toEqual([
+      "show-evidence",
+      "open-replay-window",
+      "prepare-approval",
+    ]);
   });
 });

@@ -12,6 +12,21 @@ const tabIcons = {
   raw: Code2,
 };
 
+const warmingPane = {
+  title: "Focus warming",
+  risk: "low" as const,
+  preview: {
+    headline: "A focus pane will appear as soon as the deck has a resolved target.",
+    chips: ["warming", "stand by", "deck-first"],
+    counters: [
+      { label: "prepared tabs", value: 0 },
+      { label: "evidence", value: 0 },
+      { label: "actions", value: 0 },
+    ],
+  },
+  preparedTabs: ["evidence", "replay", "systems", "actions", "raw"] as const,
+};
+
 export function FocusPane({
   pane,
   cards,
@@ -25,22 +40,21 @@ export function FocusPane({
   actions: PreparedAction[];
   reason?: DeckRankReason;
 }) {
-  if (!pane) {
-    return null;
-  }
+  const activePane = pane ?? warmingPane;
+  const showPreparedData = pane !== null;
 
   return (
     <section className="focus-pane" aria-label="Focus pane">
       <div className="focus-pane-head">
         <div>
           <p className="eyebrow">Focus pane</p>
-          <h3>{pane.title}</h3>
+          <h3>{activePane.title}</h3>
         </div>
-        <span className={`deck-risk deck-risk-${pane.risk}`}>{pane.risk}</span>
+        <span className={`deck-risk deck-risk-${activePane.risk}`}>{activePane.risk}</span>
       </div>
-      <p className="focus-headline">{pane.preview.headline}</p>
+      <p className="focus-headline">{activePane.preview.headline}</p>
       <div className="focus-tabs" role="tablist" aria-label="Prepared drilldowns">
-        {pane.preparedTabs.map((tab) => {
+        {activePane.preparedTabs.map((tab) => {
           const Icon = tabIcons[tab];
           return (
             <button aria-selected={tab === "evidence"} key={tab} role="tab" title={tab} type="button">
@@ -50,17 +64,29 @@ export function FocusPane({
           );
         })}
       </div>
-      <div className="focus-card-list">
-        {cards.map((card) => (
-          <article className={`focus-card focus-card-${card.status}`} key={card.id}>
-            <strong>{card.title}</strong>
-            <span>{card.status}</span>
-            <p>{card.headline}</p>
+      {showPreparedData ? (
+        <>
+          <div className="focus-card-list">
+            {cards.map((card) => (
+              <article className={`focus-card focus-card-${card.status}`} key={card.id}>
+                <strong>{card.title}</strong>
+                <span>{card.status}</span>
+                <p>{card.headline}</p>
+              </article>
+            ))}
+          </div>
+          <EvidenceRibbon evidence={evidence} pane={pane} reason={reason} />
+          <PreparedActionRail actions={actions} />
+        </>
+      ) : (
+        <div className="focus-card-list" aria-live="polite">
+          <article className="focus-card focus-card-degraded">
+            <strong>Focus is warming</strong>
+            <span>incubating</span>
+            <p>The deck is preparing a resolved target, evidence ribbon, and action rail.</p>
           </article>
-        ))}
-      </div>
-      <EvidenceRibbon evidence={evidence} pane={pane} reason={reason} />
-      <PreparedActionRail actions={actions} />
+        </div>
+      )}
     </section>
   );
 }

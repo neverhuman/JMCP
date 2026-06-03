@@ -582,6 +582,111 @@ describe("runVoiceTurn fast path", () => {
     await Promise.resolve();
     expect(spoken).toEqual([answer]);
   });
+
+  it("releases delayed model speech as soon as a useful deck frame arrives", async () => {
+    let releaseDeck = (_value: VoiceJituxDeckReadiness) => {};
+    const controller = new AbortController();
+    const deck = {
+      openDeckSession: vi.fn(
+        (): Promise<VoiceJituxSessionStart> =>
+          Promise.resolve({
+            kind: "ready",
+            session: {
+              sessionId: "jitux_1",
+              streamUrl: "/jitux/sessions/jitux_1/stream",
+              wsUrl: "/jitux/sessions/jitux_1/ws",
+            },
+          }),
+      ),
+      waitForDeckFrame: vi.fn(
+        (): Promise<VoiceJituxDeckReadiness> =>
+          new Promise((resolve) => {
+            releaseDeck = resolve;
+          }),
+      ),
+    };
+    installFetch(() =>
+      Promise.resolve(
+        streamResponse([
+          'data: {"choices":[{"delta":{"content":"Deck first."}}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      ),
+    );
+    const spoken: string[] = [];
+    const speechSignals: AbortSignal[] = [];
+
+    const answer = await runVoiceTurn({
+      command: "explain the current mission",
+      history: [{ role: "system", content: "system" }],
+      signal: controller.signal,
+      enqueueSpeech: (text, signal) => {
+        spoken.push(text);
+        if (signal) {
+          speechSignals.push(signal);
+        }
+      },
+      setThinking: vi.fn(),
+      ...deck,
+    });
+
+    expect(answer).toBe("Deck first.");
+    expect(spoken).toEqual([]);
+    releaseDeck({ kind: "frame", sessionId: "jitux_1", frameType: "deck.patch" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(spoken).toEqual(["Deck first."]);
+    expect(speechSignals).toEqual([controller.signal]);
+  });
+
+  it("passes the aborted turn signal when delayed speech is released after barge-in", async () => {
+    let releaseDeck = (_value: VoiceJituxDeckReadiness) => {};
+    const controller = new AbortController();
+    const deck = {
+      openDeckSession: vi.fn(
+        (): Promise<VoiceJituxSessionStart> =>
+          Promise.resolve({ kind: "unavailable", reason: "test" }),
+      ),
+      waitForDeckFrame: vi.fn(
+        (): Promise<VoiceJituxDeckReadiness> =>
+          new Promise((resolve) => {
+            releaseDeck = resolve;
+          }),
+      ),
+    };
+    installFetch((input) => {
+      if (input.includes("/jmcp/health")) {
+        return Promise.resolve(jsonResponse({ ok: true, systems: [{ name: "jmcpd" }] }));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${input}`));
+    });
+    const spoken: string[] = [];
+    const speechSignals: AbortSignal[] = [];
+
+    const answer = await runVoiceTurn({
+      command: "status",
+      history: [{ role: "system", content: "system" }],
+      signal: controller.signal,
+      enqueueSpeech: (text, signal) => {
+        spoken.push(text);
+        if (signal) {
+          speechSignals.push(signal);
+        }
+      },
+      setThinking: vi.fn(),
+      ...deck,
+    });
+
+    controller.abort();
+    releaseDeck({ kind: "frame", sessionId: "jitux_1", frameType: "deck.patch" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(answer).toContain("JMCP is healthy");
+    expect(spoken).toEqual([answer]);
+    expect(speechSignals).toEqual([controller.signal]);
+    expect(speechSignals[0].aborted).toBe(true);
+  });
 });
 
 describe("synthesize", () => {

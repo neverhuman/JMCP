@@ -120,7 +120,7 @@ export function isJituxFrame(value: unknown): value is JituxFrame {
   if (!isRecord(value) || !isFrameBase(value) || !isString(value.type)) return false;
   switch (value.type) {
     case "deck.patch":
-      return isRecord(value.deck) && isString(value.deck.title) && typeof value.deck.active === "boolean" && oneOf(value.deck.mode, ["mission_deck", "idle_fallback"]);
+      return isRecord(value.deck) && isString(value.deck.title) && typeof value.deck.active === "boolean" && oneOf(value.deck.mode, ["mission_deck", "idle_degraded"]);
     case "pane.prepare":
       return isPaneVM(value.pane) && isString(value.reason);
     case "pane.upsert":

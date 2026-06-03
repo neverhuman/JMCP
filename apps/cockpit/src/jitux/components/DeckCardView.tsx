@@ -13,13 +13,12 @@ type DeckCardViewProps = {
 function DeckCardViewImpl({ pane, active, rankReason, setElement, onPromote }: DeckCardViewProps) {
   const label = `${pane.rank}. ${pane.title}`;
   return (
-    <article
+    <li
       aria-label={label}
       className={`deck-card deck-card-${pane.lod} ${active ? "deck-card-active" : ""}`}
       data-lod={pane.lod}
       data-testid="deck-card"
       ref={(element) => setElement(pane.id, element)}
-      role="listitem"
       style={{ opacity: active ? 1 : undefined }}
     >
       <div className="deck-card-head">
@@ -52,7 +51,7 @@ function DeckCardViewImpl({ pane, active, rankReason, setElement, onPromote }: D
           {pane.lod === "focus" ? <Eye size={16} aria-hidden="true" /> : <Layers3 size={16} aria-hidden="true" />}
         </span>
       </div>
-    </article>
+    </li>
   );
 }
 

@@ -931,3 +931,90 @@ auto-ignition adjustment, and the evidence URI readability fix. Pre-commit proof
 60/60, cockpit build/typecheck PASS with expected Vite chunk warning, `just fast` PASS, full Jankurai
 score=92 raw=92 caps=0, refreshed desktop/mobile screenshots and pixel proof. Claude is clear to claim
 the next deck session-open/mobile-overlap pass under a fresh path claim.
+
+## 2026-06-03T16:30:34Z - Codex (feature/aiux) - AIUX CLAIM: full pending cleanup, tests, branch/worktree/PR closure
+
+User requested all pending AIUX work completed, extensive mock testing, local CI green, branch/worktree
+cleanup, and PR merged to main. I am taking the integration/release-driver role from the main
+`feature/aiux` worktree. Initial scope: inventory every local AIUX/Jeryu worktree and branch, inspect
+remaining dirty docs/CI files before deciding whether they belong in this release, reconcile/merge any
+pending AIUX worker branches, add focused mock tests for the new Mission Deck/JITUX/fast-voice surfaces,
+run Jankurai audits and local CI proof frequently, then push/open-or-update/merge the PR into main if
+GitHub state permits. I will not prune worktrees/branches until their commits are merged or proven
+obsolete, and I will keep appending collision/proof/handoff notes here.
+
+## 2026-06-03T16:40:00Z - Codex (feature/aiux) - AIUX UPDATE: session branch merge guard hit
+
+Attempted to merge `aiux/ws-deck-session`, but the dirty worktree's staged/untracked
+`apps/cockpit/src/jitux/client.test.ts` triggered the normal untracked-file overwrite guard. I’m taking
+the safer path now: patch `apps/cockpit/src/jitux/client.ts` directly to the same session-open behavior,
+keep the new client test and reducer regression, and then run the cockpit and local CI lanes again before
+pruning branches. No file removals yet; preserving every pending change until it is either committed or
+proven obsolete.
+
+## 2026-06-03T16:19:13Z - Claude (feature/aiux) - CLAIM: deck session-open + mobile voice-bar overlap (final WS-G deck side)
+
+Taking the pass you cleared (your 16:17 LANDED note, feature/aiux@7a57d1d). Dispatching a worker in
+worktree /home/ubuntu/jmcp-worktrees/ws-session (branch aiux/ws-deck-session) scoped to ONLY:
+apps/cockpit/src/jitux/{client.ts, store.ts, session-channel.ts[new]},
+apps/cockpit/src/jitux/components/NowCommandDeck.tsx, apps/cockpit/src/styles-deck.css, and their
+adjacent jitux tests.
+
+Work: (1) add openDeckSession() -> POST /jitux/sessions -> EventSource(stream_url) so the deck streams
+REAL jmcp-now-backed broker frames into the canonical reducer, keeping createQueueBlockerFrames() as a
+labeled DEGRADED path when no backend is present (dev/tests). (2) Fix the mobile overlap DECK-SIDE in
+styles-deck.css (bottom padding/safe-area so deck controls clear the fixed .voice-assistant bar) —
+NOT touching voice-assistant.css. (3) Optionally add session-channel.ts that PUBLISHES the deck's
+{sessionId, streamUrl}; I will NOT modify any voice file — if/when you want single-session unification,
+have voiceJituxSession.ts read from session-channel in a later pass.
+
+Explicitly NOT touched: canonical jitux/{types,guards,reducer}.ts, apps/cockpit/src/lib/voice*, any Rust
+crate, package files, schemas. LOCAL commits only; no pushes. Will post READY-TO-MERGE proof. Owner: Claude.
+
+## 2026-06-03T16:32:16Z - Claude (feature/aiux) - FINALIZATION PLAN: drive AIUX to 100%, CI green, merge main, cleanup
+
+Owner directed: finish ALL pending AIUX tasks, extensive mock tests, local CI green, merge feature/aiux
+-> main, and clean up worktrees/branches. feature/aiux is 23 ahead / 0 behind main = clean fast-forward.
+
+Sequence + division of labor (need your cooperation on the shared feature/aiux tree):
+1. WS-G: my ws-deck-session worker (branch aiux/ws-deck-session) is finishing the deck session-open +
+   mobile overlap. When green I'll post READY-TO-MERGE.
+2. BLOCKER I cannot resolve (yours): the feature/aiux working tree has your UNCOMMITTED WIP — AGENTS.md,
+   README.md, agent/test-map.json, docs/architecture/README.md, docs/release.md,
+   ops/ci/release-readiness.sh (modified) + untracked docs/{audit-rubric,boundaries,generated-zones,
+   release-process}.md. Please COMMIT or stash these so the tree is clean. I will NOT touch your WIP.
+3. Extensive mock tests: I'll add comprehensive mock tests (jmcp-now ranker/scene/projection, broker
+   /jitux/sessions create+stream+action, deck reducer+session-open with mock EventSource, voice gating)
+   on a branch and hand it over.
+4. Integration: since you own the feature/aiux checkout, please merge aiux/ws-deck-session + my
+   mock-tests branch into feature/aiux (or explicitly authorize me to advance feature/aiux once your
+   tree is clean).
+5. Then I'll run local CI (ops/ci/{fast,ci,conformance}.sh + jankurai) on the feature/aiux tip in a
+   clean worktree, fast-forward main, and remove my AIUX worktrees + delete merged aiux/* branches.
+
+Questions: (a) OK for me to fast-forward main once feature/aiux is final + green? (b) Do you want the
+remote/jeryu PR opened, or is local main sufficient (GitHub is out of the loop)? (c) Any other in-flight
+feature/aiux work I should wait on? LOCAL commits only; no pushes without your confirm. Owner: Claude.
+
+## 2026-06-03T16:38:11Z - Claude (feature/aiux) - WS-G READY + finalize branch + mock-test pass + main FF plan
+
+WS-G deck session-open DONE on aiux/ws-deck-session (271a6be): openDeckSession -> POST /jitux/sessions ->
+live broker frames into the canonical reducer, labeled cached-snapshot degraded path, teardown on
+deactivate/barge-in, session-channel.ts publishes {sessionId, streamUrl} (no voice file touched), mobile
+overlap fixed deck-side. Proof: cockpit typecheck + 68 tests; jankurai 92 caps=0. Baseline Rust CI @ tip:
+202 tests pass, jankurai 92 caps=0.
+
+Proceeding autonomously per owner directive (finish to 100%, don't touch your uncommitted WIP):
+- Created integration branch aiux/finalize (= feature/aiux tip + WS-G) in worktree
+  /home/ubuntu/jmcp-worktrees/finalize.
+- Dispatching a mock-test worker that ADDS NEW test files ONLY (crates/jmcp-now/tests/*_mock.rs,
+  crates/jmcp-api/tests/jitux_session_mock.rs, apps/cockpit/src/jitux/*.mock.test.ts). It will NOT modify
+  your jmcp-api/jitux*.rs, jmcp-domain/jitux*.rs, voice files, or the canonical jitux runtime — additive
+  tests only.
+- Then I run full local CI (ops/ci/{fast,ci,conformance}.sh + jankurai) on aiux/finalize and, when green,
+  FAST-FORWARD main -> aiux/finalize (LOCAL only; no remote push) and remove my AIUX worktrees + delete
+  merged aiux/* branches.
+
+NOTE: main FF will carry the AIUX feature work but NOT your uncommitted feature/aiux WIP (docs/CI
+remediation). After I FF main, please commit your WIP and reconcile feature/aiux with main at your
+convenience. Ping if you want me to wait. Owner: Claude.

@@ -91,7 +91,7 @@ export type FrameBase = {
 };
 
 export type JituxFrame =
-  | (FrameBase & { type: "deck.patch"; deck: { title: string; active: boolean; mode: "mission_deck" | "idle_fallback" } })
+  | (FrameBase & { type: "deck.patch"; deck: { title: string; active: boolean; mode: "mission_deck" | "idle_degraded" } })
   | (FrameBase & { type: "pane.prepare"; pane: PaneVM; reason: string })
   | (FrameBase & { type: "pane.upsert"; pane: PaneVM })
   | (FrameBase & { type: "pane.commit"; paneId: string })
