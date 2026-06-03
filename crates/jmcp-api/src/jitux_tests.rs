@@ -2,16 +2,34 @@ use crate::jitux::{
     create_jitux_session, hub, jitux_session_action, jitux_session_stream,
     CreateJituxSessionRequest, JituxActionRequest,
 };
-use axum::{extract::Path, http::StatusCode, Json};
-use jmcp_domain::JituxFrame;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+use jmcp_app::AppState;
+use jmcp_domain::{JituxFrame, MicrotaskOverrides};
+use jmcp_store::SqliteStore;
+
+fn test_state_with_blocker() -> AppState {
+    let state = AppState::new(SqliteStore::in_memory().unwrap());
+    state
+        .submit_microtask("research.concept-scan", MicrotaskOverrides::default())
+        .expect("microtask work order");
+    state
+}
 
 #[tokio::test]
 async fn creating_session_returns_stream_and_ws_paths() {
-    let response = create_jitux_session(Json(CreateJituxSessionRequest {
-        prompt: Some("What's blocking the queue right now?".to_owned()),
-        source: Some("text".to_owned()),
-    }))
+    let response = create_jitux_session(
+        State(test_state_with_blocker()),
+        Json(CreateJituxSessionRequest {
+            prompt: Some("What's blocking the queue right now?".to_owned()),
+            source: Some("text".to_owned()),
+        }),
+    )
     .await
+    .unwrap()
     .0;
 
     assert!(response.session_id.starts_with("jitux_"));
@@ -27,15 +45,33 @@ async fn creating_session_returns_stream_and_ws_paths() {
     assert!(frames
         .iter()
         .any(|frame| matches!(frame, JituxFrame::FocusChange { .. })));
+    assert!(frames
+        .iter()
+        .any(|frame| matches!(frame, JituxFrame::ActionReady { .. })));
+    assert!(frames
+        .iter()
+        .any(|frame| matches!(frame, JituxFrame::CardHydrated { .. })));
+    assert!(frames.iter().any(|frame| match frame {
+        JituxFrame::DeckRankChanged {
+            ordered_pane_ids, ..
+        } => ordered_pane_ids
+            .iter()
+            .any(|pane_id| pane_id.starts_with("queue_blockers:")),
+        _ => false,
+    }));
 }
 
 #[tokio::test]
 async fn action_route_is_preview_only() {
-    let response = create_jitux_session(Json(CreateJituxSessionRequest {
-        prompt: None,
-        source: None,
-    }))
+    let response = create_jitux_session(
+        State(test_state_with_blocker()),
+        Json(CreateJituxSessionRequest {
+            prompt: None,
+            source: None,
+        }),
+    )
     .await
+    .unwrap()
     .0;
     let Json(preview) = jitux_session_action(
         Path(response.session_id),

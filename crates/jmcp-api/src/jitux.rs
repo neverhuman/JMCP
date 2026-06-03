@@ -1,7 +1,8 @@
+use crate::routes::internal_error;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path,
+        Path, State,
     },
     http::StatusCode,
     response::{
@@ -11,11 +12,12 @@ use axum::{
     Json,
 };
 use chrono::Utc;
+use jmcp_app::AppState;
 use jmcp_domain::{
-    CardLod, CounterValue, DeckMode, DeckPatch, DeckRankFactors, DeckRankReason, JituxFrame,
-    JituxFrameBase, JituxFrameSource, PaneCounter, PaneKind, PanePreview, PaneRankReason, PaneRisk,
-    PaneStatus, PaneVm, PreparedTab,
+    DeckMode, DeckPatch, DeckRankFactors, DeckRankReason, JituxFrame, JituxFrameBase,
+    JituxFrameSource, PaneRankReason, PaneVm,
 };
+use jmcp_now::{queue_blockers_projection, NowReads, QueueBlockersProjection};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -67,12 +69,17 @@ pub(crate) struct JituxActionRequest {
 }
 
 impl JituxHub {
-    fn create_session(&self, request: CreateJituxSessionRequest) -> CreateJituxSessionResponse {
+    fn create_session(
+        &self,
+        request: CreateJituxSessionRequest,
+        projection: QueueBlockersProjection,
+    ) -> CreateJituxSessionResponse {
         let session_id = format!("jitux_{}", Uuid::new_v4().simple());
         let frames = ignition_frames(
             &session_id,
             request.prompt.as_deref(),
             request.source.as_deref(),
+            projection,
         );
         let mut sessions = self.sessions.lock().expect("jitux hub mutex poisoned");
         if sessions.len() >= MAX_SESSIONS {
@@ -109,9 +116,12 @@ impl JituxHub {
 }
 
 pub(crate) async fn create_jitux_session(
+    State(state): State<AppState>,
     Json(request): Json<CreateJituxSessionRequest>,
-) -> Json<CreateJituxSessionResponse> {
-    Json(hub().create_session(request))
+) -> Result<Json<CreateJituxSessionResponse>, (StatusCode, String)> {
+    let reads = NowReads::from_state(&state).map_err(internal_error)?;
+    let projection = queue_blockers_projection(&reads, Utc::now());
+    Ok(Json(hub().create_session(request, projection)))
 }
 
 pub(crate) async fn jitux_session_stream(
@@ -158,6 +168,7 @@ fn ignition_frames(
     session_id: &str,
     prompt: Option<&str>,
     source: Option<&str>,
+    projection: QueueBlockersProjection,
 ) -> Vec<JituxFrame> {
     let title = match prompt {
         Some(prompt) if prompt.to_lowercase().contains("queue") => "Scanning queue blockers",
@@ -175,92 +186,75 @@ fn ignition_frames(
     });
     seq += 1;
 
-    let focus = pane(
-        "pane:queue",
-        PaneKind::Queue,
-        "Queue blocker",
-        "Finding blocked work, approvals, leases, and adapter pressure.",
-        PaneStatus::Active,
-        CardLod::Focus,
-        1.0,
-    );
-    let warm_panes = [
-        pane(
-            "pane:jeryu",
-            PaneKind::Jeryu,
-            "Jeryu context",
-            "Warming ecosystem and repo signals.",
-            PaneStatus::Incubating,
-            CardLod::Ghost,
-            0.72,
-        ),
-        pane(
-            "pane:jailgun",
-            PaneKind::Jailgun,
-            "Jailgun runs",
-            "Warming run, capture, and deploy attention.",
-            PaneStatus::Incubating,
-            CardLod::Ghost,
-            0.66,
-        ),
-        pane(
-            "pane:replay",
-            PaneKind::Replay,
-            "Replay",
-            "Warming recent events and checkpoints.",
-            PaneStatus::Incubating,
-            CardLod::Ghost,
-            0.74,
-        ),
-        pane(
-            "pane:approval",
-            PaneKind::Approval,
-            "Approvals",
-            "Warming pending and expiring approvals.",
-            PaneStatus::Incubating,
-            CardLod::Ghost,
-            0.78,
-        ),
-    ];
+    let pane_ids = projection
+        .panes
+        .iter()
+        .map(|pane| pane.id.clone())
+        .collect::<Vec<_>>();
+    let focus_pane_id = pane_ids.first().cloned();
 
-    frames.push_back(JituxFrame::CardGhost {
+    for (index, pane) in projection.panes.iter().enumerate() {
+        if index == 0 {
+            frames.push_back(JituxFrame::CardGhost {
+                base: base(session_id, seq, JituxFrameSource::Projection),
+                pane: pane.clone(),
+            });
+        } else {
+            frames.push_back(JituxFrame::PanePrepare {
+                base: base(session_id, seq, JituxFrameSource::Projection),
+                pane: pane.clone(),
+                reason: prepare_reason(source, pane, &projection.rank_reasons),
+            });
+        }
+        seq += 1;
+    }
+
+    frames.push_back(JituxFrame::DeckRankChanged {
         base: base(session_id, seq, JituxFrameSource::Projection),
-        pane: focus.clone(),
+        ordered_pane_ids: pane_ids.clone(),
+        reasons: projection.rank_reasons.clone(),
     });
     seq += 1;
-    for pane in warm_panes {
-        frames.push_back(JituxFrame::PanePrepare {
+    if let Some(focus_pane_id) = focus_pane_id {
+        frames.push_back(JituxFrame::FocusChange {
             base: base(session_id, seq, JituxFrameSource::Projection),
-            pane,
-            reason: format!(
-                "Likely drilldown for {} Mission Deck session.",
-                source.unwrap_or("local")
-            ),
+            pane_id: focus_pane_id.clone(),
+            reason: focus_reason(&focus_pane_id, &projection),
         });
         seq += 1;
     }
-    let reason = queue_rank_reason();
-    frames.push_back(JituxFrame::DeckRankChanged {
-        base: base(session_id, seq, JituxFrameSource::Projection),
-        ordered_pane_ids: vec![
-            "pane:queue".to_owned(),
-            "pane:approval".to_owned(),
-            "pane:replay".to_owned(),
-            "pane:jeryu".to_owned(),
-            "pane:jailgun".to_owned(),
-        ],
-        reasons: vec![PaneRankReason {
-            pane_id: "pane:queue".to_owned(),
-            reason: reason.clone(),
-        }],
-    });
-    seq += 1;
-    frames.push_back(JituxFrame::FocusChange {
-        base: base(session_id, seq, JituxFrameSource::Projection),
-        pane_id: "pane:queue".to_owned(),
-        reason,
-    });
-    seq += 1;
+
+    for pane in &projection.panes {
+        if let Some(evidence) = projection.evidence_refs.get(&pane.id) {
+            if !evidence.is_empty() {
+                frames.push_back(JituxFrame::EvidenceAttach {
+                    base: base(session_id, seq, JituxFrameSource::Projection),
+                    pane_id: pane.id.clone(),
+                    evidence: evidence.clone(),
+                    freshness_ms: pane.freshness_ms,
+                    confidence: Some(pane.confidence),
+                });
+                seq += 1;
+            }
+        }
+        if let Some(actions) = projection.prepared_actions.get(&pane.id) {
+            for action in actions {
+                frames.push_back(JituxFrame::ActionReady {
+                    base: base(session_id, seq, JituxFrameSource::Projection),
+                    pane_id: pane.id.clone(),
+                    action: action.clone(),
+                });
+                seq += 1;
+            }
+        }
+        frames.push_back(JituxFrame::CardHydrated {
+            base: base(session_id, seq, JituxFrameSource::Projection),
+            pane_id: pane.id.clone(),
+            prepared_tabs: pane.prepared_tabs.clone(),
+        });
+        seq += 1;
+    }
+
     frames.push_back(JituxFrame::SessionDone {
         base: base(session_id, seq, JituxFrameSource::Projection),
         summary: "Mission Deck ignition frames emitted.".to_owned(),
@@ -280,58 +274,39 @@ fn base(session_id: &str, seq: u64, source: JituxFrameSource) -> JituxFrameBase 
     }
 }
 
-fn pane(
-    id: &str,
-    kind: PaneKind,
-    title: &str,
-    headline: &str,
-    status: PaneStatus,
-    lod: CardLod,
-    rank: f32,
-) -> PaneVm {
-    PaneVm {
-        id: id.to_owned(),
-        kind,
-        title: title.to_owned(),
-        rank,
-        risk: PaneRisk::Medium,
-        status,
-        lod,
-        confidence: rank.min(1.0),
-        freshness_ms: Some(0),
-        preview: PanePreview {
-            headline: headline.to_owned(),
-            chips: vec!["warming".to_owned()],
-            counters: vec![PaneCounter {
-                label: "prepared".to_owned(),
-                value: CounterValue::Text("yes".to_owned()),
-            }],
-        },
-        prepared_tabs: vec![
-            PreparedTab::Evidence,
-            PreparedTab::Replay,
-            PreparedTab::Systems,
-            PreparedTab::Actions,
-        ],
-    }
+fn prepare_reason(source: Option<&str>, pane: &PaneVm, reasons: &[PaneRankReason]) -> String {
+    let source = source.unwrap_or("local");
+    reasons
+        .iter()
+        .find(|reason| reason.pane_id == pane.id)
+        .map(|reason| {
+            format!(
+                "{} Warmed for {source} Mission Deck session.",
+                reason.reason.explanation
+            )
+        })
+        .unwrap_or_else(|| format!("{} warmed for {source} Mission Deck session.", pane.title))
 }
 
-fn queue_rank_reason() -> DeckRankReason {
-    DeckRankReason {
-        score: 7.2,
-        factors: DeckRankFactors {
-            risk: 0.8,
-            blockedness: 1.0,
-            approval_expiry_pressure: 0.8,
-            lease_pressure: 0.7,
-            adapter_degraded_weight: 0.6,
-            evidence_gap_weight: 0.8,
-            user_query_relevance: 1.0,
-            freshness: 0.8,
-            downstream_blast_radius: 0.7,
-        },
-        explanation:
-            "Queue blocker is active because the prompt asks for blocked work and related approval pressure."
-                .to_owned(),
-    }
+fn focus_reason(pane_id: &str, projection: &QueueBlockersProjection) -> DeckRankReason {
+    projection
+        .rank_reasons
+        .iter()
+        .find(|reason| reason.pane_id == pane_id)
+        .map(|reason| reason.reason.clone())
+        .unwrap_or_else(|| DeckRankReason {
+            score: 0.0,
+            factors: DeckRankFactors {
+                risk: 0.0,
+                blockedness: 0.0,
+                approval_expiry_pressure: 0.0,
+                lease_pressure: 0.0,
+                adapter_degraded_weight: 0.0,
+                evidence_gap_weight: 0.0,
+                user_query_relevance: 0.0,
+                freshness: 0.0,
+                downstream_blast_radius: 0.0,
+            },
+            explanation: "Focus pane came from the queue-blocker projection.".to_owned(),
+        })
 }

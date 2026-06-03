@@ -1185,6 +1185,7 @@ dependencies = [
  "jmcp-adapter-jeryu",
  "jmcp-app",
  "jmcp-domain",
+ "jmcp-now",
  "jmcp-store",
  "serde",
  "serde_json",

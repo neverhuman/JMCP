@@ -12,6 +12,7 @@ jcp-core = { path = "../jcp-core" }
 jmcp-adapter-jeryu = { path = "../jmcp-adapter-jeryu" }
 jmcp-app = { path = "../jmcp-app" }
 jmcp-domain = { path = "../jmcp-domain" }
+jmcp-now = { path = "../jmcp-now" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
