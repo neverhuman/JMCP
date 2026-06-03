@@ -7,9 +7,6 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    dedupe: ["react", "react-dom"],
-  },
   server: {
     fs: {
       allow: [rootDir],

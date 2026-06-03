@@ -120,40 +120,6 @@ textarea {
   font-weight: 700;
 }
 
-.nav-item.now.agent-active {
-  color: #ffffff;
-  border-color: #7c3cff;
-  background: linear-gradient(135deg, #7c3cff, #a73cff 52%, #2e3a63);
-  box-shadow: 0 0 0 1px rgba(124, 60, 255, 0.18), 0 10px 24px rgba(124, 60, 255, 0.28);
-  font-weight: 800;
-}
-
-.nav-item.now.agent-active:hover,
-.nav-item.now.agent-active:focus-visible {
-  border-color: #cbbdff;
-  background: linear-gradient(135deg, #6f32ed, #9c34f0 52%, #263052);
-}
-
-.nav-item.now.takeover-observing {
-  border-color: #9ec4ff;
-}
-
-.nav-item.now.takeover-agent_takeover {
-  border-color: #cbbdff;
-}
-
-.nav-item.now.takeover-needs_user {
-  border-color: #f1bc74;
-}
-
-.nav-item.now.takeover-acting {
-  border-color: #74d6c4;
-}
-
-.nav-item.now.takeover-complete {
-  border-color: #b8d7c4;
-}
-
 .workspace {
   min-width: 0;
   padding: 28px;
@@ -491,3 +457,4 @@ h2 {
   font-size: 0.78rem;
   font-weight: 800;
 }
+
