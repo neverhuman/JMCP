@@ -1,6 +1,6 @@
 import { ChevronsDownUp, ChevronsUpDown, Crosshair, ListFilter } from "lucide-react";
-import { useMemo, useState } from "react";
-import { getCardsForPane, useDeckSnapshot } from "../store";
+import { useEffect, useMemo, useState } from "react";
+import { deckStore, getCardsForPane, useDeckSnapshot } from "../store";
 import { AnswerCaptionStream } from "./AnswerCaptionStream";
 import { DataLoom } from "./DataLoom";
 import { DeckViewport } from "./DeckViewport";
@@ -16,12 +16,19 @@ export function NowCommandDeck() {
   const focusActions = state.focusPaneId ? state.actionsByPane[state.focusPaneId] ?? [] : [];
   const focusReason = state.focusPaneId ? state.rankReasons[state.focusPaneId] : undefined;
 
+  useEffect(() => {
+    if (!state.active) {
+      return undefined;
+    }
+    return deckStore.startLiveQueueBlockers();
+  }, [state.active]);
+
   if (!state.active) {
     return null;
   }
 
   return (
-    <section className="command-deck" data-view-mode={viewMode} aria-label="AIUX Mission Deck">
+    <section className="command-deck" data-mobile-clearance="voice-bar" data-view-mode={viewMode} aria-label="AIUX Mission Deck">
       <DataLoom />
       <div className="command-deck-surface">
         <header className="command-deck-head">

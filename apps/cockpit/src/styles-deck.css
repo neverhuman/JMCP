@@ -498,12 +498,14 @@
 }
 
 @media (max-width: 760px) {
-  .command-deck {
+  .command-deck[data-mobile-clearance="voice-bar"] {
+    --deck-voice-bar-clearance: calc(11.5rem + env(safe-area-inset-bottom, 0px));
     min-height: 0;
+    padding-bottom: var(--deck-voice-bar-clearance);
   }
 
   .command-deck-surface {
-    padding: 14px;
+    padding: 14px 14px calc(18px + env(safe-area-inset-bottom, 0px));
   }
 
   .command-deck-head {
