@@ -18,14 +18,10 @@ export function NowCommandDeck() {
 
   useEffect(() => {
     if (!state.active) {
-      return undefined;
+      return () => {};
     }
     return deckStore.startLiveQueueBlockers();
   }, [state.active]);
-
-  if (!state.active) {
-    return null;
-  }
 
   return (
     <section className="command-deck" data-mobile-clearance="voice-bar" data-view-mode={viewMode} aria-label="AIUX Mission Deck">

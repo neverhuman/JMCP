@@ -35,7 +35,7 @@ export function NowView({ runtime }: { runtime: RuntimeState }) {
     if (!deckActive) {
       deckStore.startLiveQueueBlockers(runtime);
     }
-    return undefined;
+    return () => {};
   }, [deckActive, runtime]);
   const blocked = runtime.workItems.filter((item) => item.state === "blocked").length;
   const decisionPackets = runtime.attentionPackets.filter((packet) => packet.decisionNeeded).length;
