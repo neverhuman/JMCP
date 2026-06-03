@@ -1,0 +1,274 @@
+I studied the repo and the current cockpit shape. The big unlock is: **keep the left rail static, but turn the Now pane into an agent-driven “live operating surface”**—a fast, animated, evidence-backed stream of what the agent is inspecting, ranking, prefetching, and preparing to do.
+
+JMCP already has the right primitives: Rust authority/API, SQLite event store, CLI/TUI, React cockpit, Telegram approvals, and adapter boundaries for Jankurai/Jeryu/Jailgun/Jekko.  The cockpit already listens to `/events` via `EventSource`, validates `jmcp.events`, and reloads runtime state.  It also already fans out to `/work-orders`, `/evidence`, `/systems`, `/attention`, `/voice-text`, `/memory`, `/replay`, `/approvals`, `/adapters`, `/ecosystem`, and `/universe`.  So the move is not “new dashboard.” It is **replace reload-the-world with a JITUX patch stream.**
+
+## The product concept: Agent-Driven Now
+
+When the user asks anything system-related, the Now pane instantly becomes the agent’s live cockpit.
+
+Within ~50ms:
+
+The **Now nav item turns purple**, with a pulsing “agent taking charge” state.
+
+The Now pane shows a **Live Trace Strip**:
+
+`/attention → /work-orders → /adapters → /ecosystem → /replay → /evidence`
+
+Cards start flying in before the agent answers:
+
+“Found 4 blocked work orders.”
+“Ranking by risk × staleness × authority gap.”
+“Prefetched Jeryu ecosystem graph.”
+“Replay window ready.”
+“Approval path prechecked.”
+
+The agent should **not reveal hidden reasoning**. It should show **observable probes, evidence, entities, scores, and actions**.
+
+Current `AttentionPacket` already has the right shape for this: summary, why-now, recommendation, decision-needed flag, alternatives, risk delta, drilldown refs, expiry, and optional incident.  That becomes the native JITUX card model.
+
+## What the Now pane becomes
+
+The existing Now pane should evolve into five live regions:
+
+**1. Agent Trace Bar**
+Small fast chips showing exactly what the system is looking at:
+
+`attention live` · `work-orders 18ms` · `adapters degraded` · `Jeryu graph retrying` · `replay 2,491 events`
+
+**2. Ranked Queue Swarm**
+Cards animate in and continuously reorder. Ranking formula:
+
+`priority = risk × actionability × freshness × blast_radius × lease_pressure × user_relevance`
+
+**3. Evidence Drawer**
+Inline drilldown inside Now. No route change. The card expands into tabs:
+
+`Why now` · `Evidence` · `Replay` · `Systems` · `Actions` · `Raw JSON`
+
+**4. Pre-done Action Rail**
+For every likely user follow-up, the backend has already prepared:
+
+`Analyze deeper`
+`Show evidence`
+`Replay cause`
+`Draft approval`
+`Submit microtask`
+`Quarantine`
+`Ask Jeryu/Jekko/Jailgun`
+
+JMCP already has autonomous actions that are bounded, evidence-oriented, and do not bypass leases/evidence/replay/approvals/adapter tracking, which is exactly the safety frame this UI needs. 
+
+**5. System Storyline**
+The agent narrates through the UI before audio lands:
+
+“JPCM stream is degraded because Jeryu ecosystem fetch failed; queue risk is still high because AP-88 has an adapter authority gap.”
+
+The current app already surfaces JPCM stream health in the header.  Make that element animated, clickable, and tied into the trace stream.
+
+## Top 10 questions that would look amazing
+
+| User asks                                   | What Now pane does instantly                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| “What’s the riskiest thing in the queue?”   | Cards fly in ranked by risk; top item expands with why-now, owner, lease, evidence count, and recommended action.         |
+| “Why is JPCM degraded?”                     | Trace strip focuses `/health`, `/events`, `/adapters`, `/ecosystem`; shows failing adapter, last good event, retry path.  |
+| “Drill into Jeryu.”                         | Universe mini-graph expands inside Now; Jeryu cards show tool count, health, degraded slices, active repos, current task. |
+| “What is Jekko doing right now?”            | Placement rows animate in: repo, branch, pool, task, score, health, queue depth.                                          |
+| “Show me Jailgun runs that need attention.” | Filters to Jailgun work orders, run/capture/deploy cards, evidence state, retry/deploy affordances.                       |
+| “What can you safely do without asking me?” | Shows autonomous/microtask catalog, blocked vs safe actions, live=false safety caps, evidence requirements.               |
+| “What changed since the last incident?”     | Replay timeline streams in with events, checkpoints, affected work orders, memory proposals.                              |
+| “Which approval should I handle first?”     | Approvals rank by expiry, risk, blocked downstream work, voice/text confirmation status.                                  |
+| “Can we turn this lesson into memory?”      | Shows memory candidate, confidence, counterexamples, rollback, promotion gate.                                            |
+| “What’s blocking throughput?”               | Builds a bottleneck board: adapter authority gaps, stale leases, missing evidence, pending approvals, degraded tools.     |
+
+The repo already has typed universe structures for active repos, repo scores, placements, degraded slices, and ecosystem tools.  That makes Jeryu/Jekko/Jankurai drilldowns a natural fit.
+
+## The JITUX protocol
+
+Do not make the frontend infer everything from normal REST. Add a narrow semantic stream:
+
+`POST /jitux/sessions`
+`GET /jitux/sessions/:id/stream`
+`POST /jitux/sessions/:id/action`
+
+Events are UI patches, not pages.
+
+```json
+{
+  "type": "now.card.upsert",
+  "session_id": "jitux_01HZ",
+  "revision": 12,
+  "card": {
+    "id": "wo:WO-1043",
+    "kind": "decision_packet",
+    "title": "Quarantine the bridge until the service card lands",
+    "subtitle": "WO-1043 / ui-card",
+    "rank": 0.94,
+    "risk": "high",
+    "state": "blocked",
+    "why_now": "Adapter still lacks an evidence-backed write lease.",
+    "recommendation": "Keep bridge read-only and collect missing evidence first.",
+    "sources": [
+      { "label": "/attention", "latency_ms": 13 },
+      { "label": "/work-orders/WO-1043", "latency_ms": 17 },
+      { "label": "/adapters", "latency_ms": 22 }
+    ],
+    "prefetched": {
+      "evidence": true,
+      "replay": true,
+      "actions": true,
+      "raw_json": true
+    },
+    "actions": [
+      {
+        "id": "keep_read_only",
+        "label": "Keep read-only",
+        "safety": "safe",
+        "requires_approval": false
+      },
+      {
+        "id": "promote_narrower_lease",
+        "label": "Promote narrower lease",
+        "safety": "requires evidence",
+        "requires_approval": true
+      }
+    ]
+  }
+}
+```
+
+The key event types:
+
+```ts
+type JituxEvent =
+  | { type: "now.session.started"; sessionId: string; userText: string }
+  | { type: "now.agent_control"; active: boolean; accent: "purple" }
+  | { type: "now.probe.started"; probeId: string; target: string }
+  | { type: "now.probe.finished"; probeId: string; target: string; latencyMs: number; status: "ok" | "degraded" | "failed" }
+  | { type: "now.metric.patch"; metric: string; value: number | string; tone: "green" | "amber" | "red" | "purple" }
+  | { type: "now.card.upsert"; card: JituxCard }
+  | { type: "now.rank.patch"; orderedIds: string[]; reason: string }
+  | { type: "now.drilldown.ready"; cardId: string; tabs: JituxTab[] }
+  | { type: "now.action.prefetched"; cardId: string; action: JituxAction }
+  | { type: "now.answer.delta"; text: string }
+  | { type: "now.session.done"; summary: string };
+```
+
+## Backend architecture: brutally fast
+
+Keep the existing Rust/Axum/Tokio shape. The workspace already uses Axum, Tokio, Reqwest, Rusqlite, Serde, Schemars, and Ratatui.  The cockpit is already React/Vite/TypeScript. 
+
+Add a **Now Projection Engine** in Rust:
+
+```text
+SQLite event store
+   ↓
+Projection cache: attention, queue, adapters, approvals, replay, universe
+   ↓
+JITUX session orchestrator
+   ↓
+SSE/WebSocket patch stream
+   ↓
+React Now pane external store
+```
+
+Critical performance rules:
+
+Use cached projections for the first frame. Never wait for every backend probe before showing UI.
+
+Use bounded parallel probes: `/attention`, `/work-orders`, `/adapters`, `/universe`, `/replay`.
+
+Replace full `loadRuntime()` reloads with patch application. The current full reload is fine for fixture/demo, but the live experience should stream card-level deltas. 
+
+Use SQLite WAL, prepared statements, and an in-memory `ArcSwap`/snapshot cache for the hot queue.
+
+Use stable card IDs so React can FLIP-animate reorderings without remounting everything.
+
+Use CSS transforms only: `translate3d`, opacity, scale. No layout thrash.
+
+Start JITUX on partial voice transcript. The UI should move on “what’s… riskiest…” before the ASR final text arrives.
+
+## Frontend architecture
+
+Create a dedicated store:
+
+```ts
+type NowStore = {
+  agentActive: boolean;
+  sessionId?: string;
+  probes: Record<string, ProbeState>;
+  cards: Record<string, JituxCard>;
+  orderedIds: string[];
+  selectedCardId?: string;
+  answerDraft: string;
+};
+```
+
+React pieces:
+
+```text
+<NowAgentShell>
+  <LiveTraceStrip />
+  <NowMetricDeck />
+  <RankedCardSwarm />
+  <InlineDrilldown />
+  <PrefetchedActionRail />
+  <AnswerCaptionStream />
+</NowAgentShell>
+```
+
+CSS behavior:
+
+```css
+.nav-item.now.agent-active {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, .25), 0 16px 40px rgba(124, 58, 237, .28);
+}
+
+.now-card.entering {
+  transform: translate3d(0, -10px, 0) scale(.98);
+  opacity: 0;
+}
+
+.now-card.live {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+  transition: transform 120ms cubic-bezier(.2,.8,.2,1), opacity 90ms linear;
+}
+```
+
+## The best UX detail
+
+When the user asks: **“What’s happening with the queue?”**
+
+The agent should not say “Let me check.”
+
+The UI should immediately do this:
+
+```text
+0ms      Now turns purple
+25ms     Trace strip: /attention, /work-orders, /adapters
+60ms     Metric cards update: blocked, urgent, approvals, degraded
+120ms    Top 5 queue cards fly in
+180ms    Ranking changes twice as evidence lands
+260ms    Top card expands
+400ms    Replay/evidence/action tabs show "ready"
+700ms    Agent voice starts: "The queue is bottlenecked by one high-risk adapter authority gap..."
+```
+
+That is the magic: **the user sees the system wake up before the agent speaks.**
+
+## Safety and governance
+
+Keep approvals backend-owned. The repo already says CLI, REST, cockpit, and Telegram use the same persisted approval records, and the cockpit should not reveal raw token material.  JITUX actions should always show:
+
+`authority` · `evidence` · `lease` · `approval required?` · `rollback`
+
+Action buttons should be precomputed but not executable until preconditions are green.
+
+## The north-star line
+
+**Now is no longer a dashboard. Now is the live manifestation of the agent’s operational attention.**
+
+Left rail stays stable. The agent takes over the Now pane, turns it purple, streams what it is observing, ranks what matters, prefetches every likely drilldown, and gives the user the feeling that JMCP is already moving at machine speed.
+

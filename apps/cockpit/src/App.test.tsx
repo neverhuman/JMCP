@@ -3,12 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { views } from "./fixtures";
+import { resetDeckStoreForTests } from "./jitux/store";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("test api unavailable"))));
+  resetDeckStoreForTests();
 });
 
 afterEach(() => {
+  resetDeckStoreForTests();
   vi.unstubAllGlobals();
   cleanup();
 });
@@ -22,12 +25,13 @@ describe("JMCP cockpit", () => {
     }
   });
 
-  it("shows the attention inbox on the first screen", () => {
+  it("shows the Mission Deck on the first screen", async () => {
     render(<App />);
 
-    expect(screen.getByText("AP-88")).toBeInTheDocument();
-    expect(screen.getByText("Quarantine the bridge until the service card lands.")).toBeInTheDocument();
-    expect(screen.getByText("The adapter still lacks an evidence-backed write lease.")).toBeInTheDocument();
+    expect(await screen.findByLabelText("AIUX Mission Deck")).toBeInTheDocument();
+    const rankedDeck = screen.getByLabelText("Ranked Mission Deck");
+    expect(rankedDeck).toBeInTheDocument();
+    expect(screen.getAllByText("Queue blocker").length).toBeGreaterThan(0);
   });
 
   it("opens the memory slice with promotion and quarantine drill-down", async () => {

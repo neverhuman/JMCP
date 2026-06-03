@@ -1,0 +1,378 @@
+The coolest version is a **3D Command Deck**: the right pane becomes a live, AI-driven stack of “operational panes” where the agent is constantly preparing, ranking, and reshuffling cards before the user even sees the final answer.
+
+Think: **deck of glassy VM windows + mission-control stack + live data loom behind it**.
+
+The existing JMCP cockpit already has the bones for this: Vite/React/TypeScript on the cockpit side, Rust/Axum/Tokio/SQLite on the backend, and an existing SSE `/events` pattern in the React app.   
+
+## The UX: “Command Deck”
+
+The Now pane becomes a 3D stack with three zones:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ Trace Ribbon: /attention 12ms · /adapters degraded · replay ready
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│          [ Focus Pane: top ranked card, full detail ]         │
+│                                                              │
+│     ╱ card 2 preview ╲      ╱ card 3 preview ╲               │
+│    ╱ card 4 preview  ╲    ╱ card 5 preview  ╲                │
+│                                                              │
+│  Background Data Loom: graph lines, probes, ranking movement  │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│ Prepared Actions: drilldown · replay · evidence · approve · run
+└──────────────────────────────────────────────────────────────┘
+```
+
+Cards do not just “appear.” They have lifecycle:
+
+```text
+cold → prepared offscreen → previewed in stack → promoted to focus → action-ready → archived
+```
+
+That is the trick. The agent can prepare 5–20 panes invisibly, hydrate them with evidence/replay/actions, then reveal them instantly.
+
+## Visual style
+
+I would make the cards feel like **thin glass machines** in perspective:
+
+The top card is flat and readable. Cards behind it are slightly rotated, compressed, and offset on the z-axis. Each one has a high-level preview: risk, system, owner, queue rank, and one-line why-now.
+
+When ranking changes, the stack does a fast “deck shuffle” using GPU transforms only:
+
+```css
+transform:
+  perspective(1400px)
+  translate3d(var(--x), var(--y), var(--z))
+  rotateX(var(--rx))
+  rotateY(var(--ry))
+  scale(var(--scale));
+```
+
+No heavy WebGL for the main cards. Use DOM + CSS 3D transforms for speed, accessibility, text crispness, and instant React updates. WebGL/Canvas can be used only for the background “data loom” lines.
+
+## The navigation model
+
+The right pane has four navigation gestures, but the agent can drive all of them automatically:
+
+| Gesture      | Agent-driven behavior                                              |
+| ------------ | ------------------------------------------------------------------ |
+| **Promote**  | Move a card to the top because rank increased.                     |
+| **Fan out**  | Spread 5–20 cards so the user can see everything available.        |
+| **Collapse** | Compress lower-priority cards into a stack.                        |
+| **Tunnel**   | Drill into one card: evidence, replay, systems, raw JSON, actions. |
+
+The user should feel like the agent is saying: **“I already looked at the important stuff. Here is the stack. This one matters most.”**
+
+## The technical stack I’d use
+
+### Backend: Rust “Deck Projection Engine”
+
+Add a Rust layer that sits beside the existing API:
+
+```text
+JMCP SQLite event store
+        ↓
+Projection cache
+        ↓
+Ranking engine
+        ↓
+JITUX deck builder
+        ↓
+SSE/WebSocket patch stream
+        ↓
+React Command Deck
+```
+
+JMCP already has runtime endpoints for attention, voice/text, memory, replay, approvals, adapters, ecosystem, and universe.  Instead of making the frontend reload everything, the backend should emit tiny deck patches:
+
+```json
+{
+  "type": "deck.card.prepared",
+  "card_id": "wo:WO-1043",
+  "rank": 0.94,
+  "preview": {
+    "title": "Quarantine the bridge until the service card lands",
+    "risk": "high",
+    "system": "Jailgun",
+    "why_now": "Adapter lacks evidence-backed write lease"
+  },
+  "prepared_tabs": ["evidence", "replay", "systems", "actions"]
+}
+```
+
+Then:
+
+```json
+{
+  "type": "deck.rank.changed",
+  "ordered_ids": [
+    "wo:WO-1043",
+    "adapter:jeryu",
+    "approval:AP-89",
+    "replay:incident-144"
+  ],
+  "reason": "Risk and authority gap outrank stale memory promotion"
+}
+```
+
+### Transport
+
+Use **SSE for one-way high-frequency visual patches** and **POST/WebSocket for actions**.
+
+SSE is enough for the deck animation stream and matches the current cockpit pattern. The existing app already uses `EventSource` against `/events`; extend that idea with `/jitux/sessions/:id/stream`. 
+
+Use WebSocket only if you want true bidirectional low-latency control later.
+
+### Frontend: Vite + React + TypeScript + external store
+
+Use React for structure, but do not let React own every animation frame.
+
+Use:
+
+```text
+Vite
+React
+TypeScript
+useSyncExternalStore
+requestAnimationFrame scheduler
+CSS transform3d
+Canvas/WebGL optional background only
+```
+
+Avoid making every deck movement a React state update. React receives semantic patches; an animation controller applies transforms on `requestAnimationFrame`.
+
+```ts
+type DeckCard = {
+  id: string;
+  kind: "work_order" | "adapter" | "approval" | "evidence" | "replay" | "memory" | "system";
+  rank: number;
+  risk: "low" | "medium" | "high";
+  title: string;
+  preview: string;
+  preparedTabs: Array<"evidence" | "replay" | "systems" | "actions" | "raw">;
+  focusState: "hidden" | "preview" | "focus" | "archived";
+};
+
+type DeckPatch =
+  | { type: "deck.card.prepared"; card: DeckCard }
+  | { type: "deck.card.revealed"; cardId: string }
+  | { type: "deck.rank.changed"; orderedIds: string[]; reason: string }
+  | { type: "deck.focus.changed"; cardId: string; reason: string }
+  | { type: "deck.card.hydrated"; cardId: string; tab: string; payload: unknown }
+  | { type: "deck.action.ready"; cardId: string; action: JituxAction };
+```
+
+## The most important performance idea
+
+Separate cards into **three levels of detail**.
+
+```ts
+type CardLOD = "ghost" | "preview" | "focus";
+```
+
+**Ghost** cards are cheap: title, rank, color, one number.
+**Preview** cards show high-level metadata.
+**Focus** card hydrates full detail, tabs, evidence, replay, action rail.
+
+For 5–20 items, render all ghosts/previews, but only hydrate 1–3 focus candidates.
+
+That gives the “everything is alive” feeling without paying the cost of rendering everything fully.
+
+## The actual React layout
+
+```tsx
+function CommandDeck({ sessionId }: { sessionId: string }) {
+  const deck = useDeckStore(sessionId);
+
+  return (
+    <section className="command-deck">
+      <TraceRibbon probes={deck.probes} />
+      <DeckViewport>
+        <DataLoom probes={deck.probes} links={deck.links} />
+        <CardStack cards={deck.cards} orderedIds={deck.orderedIds} />
+        <FocusPane card={deck.focusCard} />
+      </DeckViewport>
+      <PreparedActionRail actions={deck.focusActions} />
+    </section>
+  );
+}
+```
+
+The visual stack:
+
+```tsx
+function CardStack({ cards, orderedIds }: CardStackProps) {
+  return (
+    <div className="card-stack" aria-label="Agent-ranked system cards">
+      {orderedIds.slice(0, 20).map((id, index) => (
+        <DeckCardView
+          key={id}
+          card={cards[id]}
+          index={index}
+          lod={index === 0 ? "focus" : index < 6 ? "preview" : "ghost"}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+The transform should be derived from rank position:
+
+```ts
+function deckTransform(index: number) {
+  return {
+    x: Math.min(index, 7) * 18,
+    y: Math.min(index, 7) * 14,
+    z: -Math.min(index, 10) * 44,
+    rotateY: index === 0 ? 0 : -8 + index * 0.6,
+    rotateX: index === 0 ? 0 : 3,
+    scale: Math.max(0.72, 1 - index * 0.035),
+    opacity: index > 14 ? 0 : 1 - index * 0.045,
+  };
+}
+```
+
+## The backend ranking engine
+
+The ranking should be deterministic and explainable:
+
+```rust
+score =
+    risk_weight
+  + blocked_weight
+  + approval_expiry_pressure
+  + lease_pressure
+  + adapter_degraded_weight
+  + evidence_gap_weight
+  + user_query_relevance
+  + freshness_weight
+  + downstream_blast_radius;
+```
+
+Send the ranking reason as UI data, not hidden reasoning:
+
+```json
+{
+  "type": "deck.focus.changed",
+  "card_id": "wo:WO-1043",
+  "reason": "High risk + blocked state + missing evidence-backed lease"
+}
+```
+
+The user sees why the card jumped to the top.
+
+## Prebuilding before reveal
+
+This is the magic system:
+
+```text
+User starts asking:
+“What is happening with Jeryu…”
+
+0ms    ASR partial arrives
+20ms   backend starts Jeryu query plan
+40ms   deck session created
+60ms   Now turns purple
+80ms   ghost cards appear
+120ms  Jeryu card prepared
+180ms  ecosystem/replay/actions hydrate invisibly
+240ms  top card expands
+700ms  assistant begins spoken answer
+```
+
+The card should be built before it becomes focus. Never show an empty detail pane unless it is intentionally a “probing” visual.
+
+## CSS speed rules
+
+Use these aggressively:
+
+```css
+.command-deck {
+  contain: layout paint style;
+  overflow: hidden;
+}
+
+.deck-card {
+  position: absolute;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  contain: layout paint;
+}
+
+.deck-card[data-lod="ghost"] {
+  content-visibility: auto;
+}
+
+.focus-pane {
+  contain: layout paint;
+}
+```
+
+And avoid:
+
+```text
+No layout animation.
+No animating width/height/top/left.
+No deep box-shadows on 20 moving cards.
+No full React rerender per animation frame.
+No WebGL text surfaces for readable cards.
+```
+
+## The “coolest” interaction
+
+When the agent takes charge, the Now button turns purple and the right pane does a **deck ignition**:
+
+1. The existing Now content blurs backward.
+2. A purple trace line scans across the pane.
+3. Ghost cards snap into depth.
+4. The top 5 cards fan outward.
+5. The winning card slams softly into focus.
+6. Prepared actions light up underneath.
+
+That makes the UI feel alive before the answer starts.
+
+## Final ideal stack
+
+```text
+Rust
+- axum
+- tokio
+- rusqlite SQLite WAL
+- serde / schemars
+- broadcast channels for session streams
+- projection cache with Arc/RwLock or ArcSwap
+- deterministic deck ranking engine
+
+Transport
+- SSE for visual patches
+- REST POST for actions
+- optional WebSocket later for bidirectional control
+
+Frontend
+- Vite
+- React
+- TypeScript
+- useSyncExternalStore deck store
+- requestAnimationFrame animation scheduler
+- CSS 3D transform stack
+- optional Canvas/WebGL background loom only
+
+UX primitives
+- CommandDeck
+- TraceRibbon
+- CardStack
+- FocusPane
+- DataLoom
+- PreparedActionRail
+- ReplayTunnel
+- EvidenceDrawer
+```
+
+The ideal product feeling is:
+
+**The agent is not navigating the UI. The UI is becoming the agent’s live working memory.**
+
