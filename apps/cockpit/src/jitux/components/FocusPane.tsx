@@ -1,5 +1,5 @@
 import { Code2, FileCheck2, History, Server, Zap } from "lucide-react";
-import type { DeckCardVM } from "../store";
+import type { DeckCardVM } from "../deck-queries";
 import type { DeckRankReason, EvidenceRef, PaneVM, PreparedAction } from "../types";
 import { EvidenceRibbon } from "./EvidenceRibbon";
 import { PreparedActionRail } from "./PreparedActionRail";

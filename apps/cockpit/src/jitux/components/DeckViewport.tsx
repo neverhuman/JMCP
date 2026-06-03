@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { deckStore, getRankedPanes, type DeckState } from "../store";
+import { deckStore, type DeckState } from "../store";
+import { getRankedPanes } from "../deck-queries";
 import { deckTransformScheduler } from "../scheduler";
 import { getDeckTransform } from "../layout/deck";
 import { DeckCardView } from "./DeckCardView";

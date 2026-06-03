@@ -1,6 +1,7 @@
 import { ChevronsDownUp, ChevronsUpDown, Crosshair, ListFilter } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { deckStore, getCardsForPane, useDeckSnapshot } from "../store";
+import { deckStore, useDeckSnapshot } from "../store";
+import { getCardsForPane } from "../deck-queries";
 import { AnswerCaptionStream } from "./AnswerCaptionStream";
 import { DataLoom } from "./DataLoom";
 import { DeckViewport } from "./DeckViewport";

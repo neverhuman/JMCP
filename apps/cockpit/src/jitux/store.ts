@@ -9,7 +9,8 @@ import {
   type DeckLiveStopReason,
   type DeckSessionTraceProbe,
 } from "./session-channel";
-import type { CardLOD, DeckRankReason, EvidenceRef, JituxFrame, JituxState, PaneKind, PaneRisk, PaneVM, PreparedAction } from "./types";
+import { getCardsForPane, getRankedPanes } from "./deck-queries";
+import type { DeckRankReason, EvidenceRef, JituxFrame, JituxState, PaneKind, PaneRisk, PaneVM, PreparedAction } from "./types";
 
 type Listener = () => void;
 type Selector<T> = (state: DeckState) => T;
@@ -17,8 +18,6 @@ type Selector<T> = (state: DeckState) => T;
 export type DeckNavState = "idle" | "observing" | "agent_takeover" | "needs_user" | "acting" | "complete";
 export type DeckStreamStatus = "idle" | "opening" | "live" | "degraded";
 export type TraceProbe = DeckSessionTraceProbe;
-
-export type DeckCardVM = { id: string; paneId: string; title: string; lod: CardLOD; status: "ghost" | "committed" | "hydrated"; risk: PaneRisk; headline: string };
 
 export type DeckState = JituxState & {
   mode: "idle" | "mission_deck";
@@ -496,24 +495,6 @@ export function useDeckSnapshot<T>(selector: Selector<T>): T;
 export function useDeckSnapshot<T>(selector?: Selector<T>): DeckState | T {
   const snapshot = useSyncExternalStore(deckStore.subscribe, deckStore.getSnapshot, deckStore.getSnapshot);
   return selector ? selector(snapshot) : snapshot;
-}
-
-export function getRankedPanes(state: DeckState): PaneVM[] {
-  return state.paneOrder.map((id) => state.panes[id]).filter((pane): pane is PaneVM => pane !== undefined).slice(0, 20);
-}
-
-export function getCardsForPane(state: DeckState, paneId: string): DeckCardVM[] {
-  const pane = state.panes[paneId];
-  if (!pane) {
-    return [];
-  }
-  return [
-    {
-      id: `${pane.id}.card`, paneId: pane.id, title: pane.title, lod: pane.lod,
-      status: pane.lod === "ghost" ? "ghost" : pane.lod === "focus" ? "hydrated" : "committed",
-      risk: pane.risk, headline: pane.preview.headline,
-    },
-  ];
 }
 
 export function resetDeckStoreForTests(): void {
