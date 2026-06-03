@@ -205,7 +205,9 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     chunksRef.current = [];
     const audioType = preferredAudioType();
     const recorder =
-      audioType === undefined ? new MediaRecorder(stream) : new MediaRecorder(stream, { mimeType: audioType });
+      audioType.kind === "browser_default"
+        ? new MediaRecorder(stream)
+        : new MediaRecorder(stream, { mimeType: audioType.mimeType });
     recorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);

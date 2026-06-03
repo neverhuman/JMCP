@@ -372,12 +372,22 @@ describe("voiceTools", () => {
 
 describe("runVoiceTurn fast path", () => {
   it("routes simple read-only intents without using the model", async () => {
-    expect(detectFastReadOnlyTool("how is JMCP doing?")).toBe("jmcp_status");
-    expect(detectFastReadOnlyTool("what is blocking the queue right now?")).toBe(
-      "microtask_queue",
-    );
-    expect(detectFastReadOnlyTool("queue the microtask")).toBeNull();
-    expect(detectFastReadOnlyTool("can you start the bug scan?")).toBeNull();
+    expect(detectFastReadOnlyTool("how is JMCP doing?")).toEqual({
+      kind: "local_tool",
+      tool: "jmcp_status",
+    });
+    expect(detectFastReadOnlyTool("what is blocking the queue right now?")).toEqual({
+      kind: "local_tool",
+      tool: "microtask_queue",
+    });
+    expect(detectFastReadOnlyTool("queue the microtask")).toEqual({
+      kind: "model",
+      reason: "mutation_intent",
+    });
+    expect(detectFastReadOnlyTool("can you start the bug scan?")).toEqual({
+      kind: "model",
+      reason: "mutation_intent",
+    });
   });
 
   it("answers status through the local tool before model reasoning", async () => {

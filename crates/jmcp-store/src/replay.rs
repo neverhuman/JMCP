@@ -33,7 +33,9 @@ impl SqliteStore {
     pub fn event_watermark(&self) -> StoreResult<i64> {
         Ok(self
             .conn
-            .query_row("select coalesce(max(id), 0) from events", [], |row| row.get(0))?)
+            .query_row("select coalesce(max(id), 0) from events", [], |row| {
+                row.get(0)
+            })?)
     }
 
     pub fn replay_work_orders(&self) -> StoreResult<Vec<WorkOrder>> {

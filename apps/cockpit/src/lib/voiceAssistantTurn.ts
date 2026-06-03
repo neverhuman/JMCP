@@ -22,33 +22,40 @@ type FastReadOnlyTool =
   | "list_autonomous_actions"
   | "attention_inbox";
 
-export function detectFastReadOnlyTool(command: string): FastReadOnlyTool | null {
+export type FastReadOnlyDecision =
+  | { kind: "local_tool"; tool: FastReadOnlyTool }
+  | { kind: "model"; reason: "empty_command" | "mutation_intent" | "requires_reasoning" };
+
+export function detectFastReadOnlyTool(command: string): FastReadOnlyDecision {
   const text = command.trim().toLowerCase();
   const mutationIntent =
     /^(please\s+)?(start|submit|queue|run|launch|approve|deny|cancel)\b/.test(text) ||
     /\b(can|could|would)\s+you\s+(start|submit|queue|run|launch|approve|deny|cancel)\b/.test(text);
-  if (text.length === 0 || mutationIntent) {
-    return null;
+  if (text.length === 0) {
+    return { kind: "model", reason: "empty_command" };
+  }
+  if (mutationIntent) {
+    return { kind: "model", reason: "mutation_intent" };
   }
   if (/\b(status|health|healthy)\b/.test(text) || /\bhow\s+(is|are)\b.*\bjmcp\b/.test(text)) {
-    return "jmcp_status";
+    return { kind: "local_tool", tool: "jmcp_status" };
   }
   if (/\battention\b/.test(text) || /\bneeds?\s+me\b/.test(text)) {
-    return "attention_inbox";
+    return { kind: "local_tool", tool: "attention_inbox" };
   }
   if (/\bautonomous\b/.test(text) || /\bwhat\s+can\s+you\s+(safely\s+)?do\b/.test(text)) {
-    return "list_autonomous_actions";
+    return { kind: "local_tool", tool: "list_autonomous_actions" };
   }
   if (/\bwork\s+orders?\b/.test(text)) {
-    return "list_work_orders";
+    return { kind: "local_tool", tool: "list_work_orders" };
   }
   if (
     /\bqueue\b/.test(text) ||
     /\b(blocked|blocking|blockers?|microtasks?)\b/.test(text)
   ) {
-    return "microtask_queue";
+    return { kind: "local_tool", tool: "microtask_queue" };
   }
-  return null;
+  return { kind: "model", reason: "requires_reasoning" };
 }
 
 export async function runVoiceTurn({
@@ -59,9 +66,9 @@ export async function runVoiceTurn({
   setThinking,
 }: VoiceTurnOptions): Promise<string> {
   history.push({ role: "user", content: command });
-  const fastTool = detectFastReadOnlyTool(command);
-  if (fastTool !== null) {
-    const output = await executeVoiceTool(fastTool, "{}", signal);
+  const fastDecision = detectFastReadOnlyTool(command);
+  if (fastDecision.kind === "local_tool") {
+    const output = await executeVoiceTool(fastDecision.tool, "{}", signal);
     enqueueSpeech(output, signal);
     history.push({ role: "assistant", content: output });
     trimHistory(history);

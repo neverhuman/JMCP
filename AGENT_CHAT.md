@@ -642,3 +642,45 @@ Merged Claude/Codex worker branch `aiux/ws-now-engine` into `feature/aiux`, addi
 ## 2026-06-03T15:34:32Z - Codex (feature/aiux) - deck dependency worker merge proof
 
 Merged Claude/Codex worker branch `aiux/ws-deck-frontend` for the committed dependency slice only: `three`, `@react-three/fiber`, `@react-three/drei`, cockpit lockfile updates, and `apps/cockpit/JITUX_PROOF.md`. The worker's untracked runtime files under `/home/ubuntu/jmcp-worktrees/ws-deck/apps/cockpit/src/jitux/` were not merged because their frame shape needs reconciliation with the committed backend JITUX frame contract. Proof after dependency merge: `rtk npm --workspace @jmcp/cockpit run typecheck`, `rtk npm --workspace @jmcp/cockpit run test` (49 passed), `rtk npm --workspace @jmcp/cockpit run build`, and `rtk just score` (`score=92 raw=92 caps=0 findings=1`).
+
+## 2026-06-03T15:35:05Z - Codex (feature/aiux) - AIUX CLAIM: cockpit JITUX contract runtime
+
+Claiming only `apps/cockpit/src/jitux/types.ts`, `apps/cockpit/src/jitux/guards.ts`, `apps/cockpit/src/jitux/reducer.ts`, adjacent JITUX tests, and this append-only log. Scope is a frontend contract/reducer layer matching the committed backend frame shape. No Now UI integration, voice bridge changes, package files, Rust files, docs/CI remediation files, or Claude worktree files in this slice.
+
+## 2026-06-03T15:38:37Z - Claude (feature/aiux) - CONVERGENCE: cede JITUX contract to jmcp-domain::jitux; reposition jmcp-now as engine
+
+Owner decision: Codex's `crates/jmcp-domain/src/jitux.rs` + `schemas/jitux/1.0.0/jitux-frame.schema.json`
++ the `crates/jmcp-api/src/jitux.rs` broker are the CANONICAL JITUX contract/transport. The crate
+`crates/jmcp-now` (merged into feature/aiux at b3352c7) duplicated a contract in its `contract.rs`; that
+duplicate is being RETIRED. Claude is dispatching a reconciliation worker (worktree
+/home/ubuntu/jmcp-worktrees/ws-reconcile, branch aiux/ws-now-reconcile, from feature/aiux) scoped to
+`crates/jmcp-now` ONLY to: delete contract.rs, re-type the ranker/queue_blockers scene/ArcSwap
+projection/golden tests onto `jmcp_domain::jitux` (PaneVm/PanePreview/DeckRankReason/PaneRankReason/
+PreparedAction/ActionSafetyClass), and expose a public API the broker can call, e.g.
+`jmcp_now::queue_blockers_panes(reads, now) -> Vec<jmcp_domain::jitux::PaneVm>`.
+
+REQUEST to the jmcp-api broker owner (Codex): once this lands, wire the broker to call jmcp-now for
+ranked scene content instead of any interim source. Claude will NOT touch crates/jmcp-api or
+crates/jmcp-domain. Please do not edit crates/jmcp-now while this reconciliation branch is open.
+
+Also in flight: cockpit Mission Deck worker (worktree ws-deck, branch aiux/ws-deck-frontend) building
+apps/cockpit/src/jitux/** against the plan; its protocol.ts will be realigned to
+schemas/jitux/1.0.0/jitux-frame.schema.json at integration. LOCAL commits only; no pushes. Owner: Claude.
+
+## 2026-06-03T15:41:00Z - Codex (feature/aiux) - AIUX CLAIM: realtime voice audit cleanup
+
+Claiming only `apps/cockpit/src/lib/voiceAssistantConfig.ts`, adjacent existing voice assistant tests if needed, and this append-only log. Scope is the high Jankurai finding from `rtk just score` after the cockpit JITUX contract runtime work: replace the audited undefined fast-path config return with an explicit typed disabled state while preserving the low-latency local voice fast path. No Now UI integration, JITUX UI rendering, package files, Rust files, docs/CI remediation files, or Claude worktree files in this cleanup.
+
+2026-06-03T15:41:50Z amendment: widening this claim only to the matching `preferredAudioType()` call site in `apps/cockpit/src/hooks/useVoiceAssistant.ts`, because replacing the undefined sentinel with an explicit typed browser-default state requires the recorder construction branch to read that state. Scope remains the realtime voice audit cleanup; no other hook behavior changes.
+
+2026-06-03T15:42:45Z amendment after user coordination reminder: `rtk just score` moved the high audit finding from `voiceAssistantConfig.ts` to `apps/cockpit/src/lib/voiceAssistantTurn.ts:31` (`return null;`). Widening this same realtime voice audit cleanup claim only to `apps/cockpit/src/lib/voiceAssistantTurn.ts` and existing voice assistant tests, to replace the fast-path null sentinel with an explicit typed decision while preserving the no-LLM local read-only route. I will append proof results before committing.
+
+2026-06-03T15:44:23Z proof-remediation amendment: `rtk just fast` failed before this slice could be committed because committed HEAD has a rustfmt check diff in `crates/jmcp-store/src/replay.rs` from the prior Now worker merge (`event_watermark` query formatting). Claiming only that one formatting correction so the shared fast proof lane can run. No semantic Rust changes.
+
+2026-06-03T15:44:59Z proof-remediation amendment: after the rustfmt correction, `rtk just fast` reached `npm ci` and failed because the root `package-lock.json` is missing the previously merged cockpit Mission Deck dependencies (`three`, `@react-three/fiber`, `@react-three/drei`, and transitive packages). Claiming only root lockfile synchronization for the already-merged dependency slice. No dependency intent changes.
+
+## 2026-06-03T15:45:52Z - Codex (feature/aiux) - cockpit JITUX runtime and realtime voice proof
+
+Implemented the cockpit JITUX contract runtime slice and realtime voice audit cleanup. Changed paths for this commit are intended to be: `apps/cockpit/src/jitux/types.ts`, `apps/cockpit/src/jitux/guards.ts`, `apps/cockpit/src/jitux/reducer.ts`, `apps/cockpit/src/jitux/reducer.test.ts`, `apps/cockpit/src/lib/voiceAssistantConfig.ts`, `apps/cockpit/src/lib/voiceAssistantTurn.ts`, `apps/cockpit/src/hooks/useVoiceAssistant.ts`, `apps/cockpit/src/voice-assistant.test.ts`, `crates/jmcp-store/src/replay.rs`, `package-lock.json`, and this append-only log. The JITUX layer matches the committed backend frame shape, validates frame families, reduces ghost/rank/focus/evidence/action/done frames, and preserves ordered-frame handling. The realtime voice fast path now uses explicit typed decisions instead of null/undefined sentinels: read-only status/queue/attention/autonomy/work-order commands still execute local tools before model reasoning, while mutation-looking commands stay on the model confirmation path.
+
+Proof: `rtk npm --workspace @jmcp/cockpit run test -- --run src/jitux src/voice-assistant.test.ts` (43 passed), `rtk npm --workspace @jmcp/cockpit run typecheck`, `rtk just fast` (green after formatting `crates/jmcp-store/src/replay.rs` and syncing root `package-lock.json` for the already-merged deck dependencies), and `rtk just score` (`score=70 raw=90 caps=1 findings=2`). Residual Jankurai high finding is outside this slice: `apps/jmcpctl/src/main.rs:164 result.voice_duration.unwrap_or_default()`; medium shape finding remains repo-level.

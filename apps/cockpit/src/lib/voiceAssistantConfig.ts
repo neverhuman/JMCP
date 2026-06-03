@@ -18,6 +18,10 @@ const PREFERRED_AUDIO_TYPES = [
   "audio/ogg",
 ];
 
+export type PreferredAudioType =
+  | { kind: "explicit"; mimeType: string }
+  | { kind: "browser_default" };
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -30,14 +34,15 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
-export function preferredAudioType(): string | undefined {
+export function preferredAudioType(): PreferredAudioType {
   if (
     typeof MediaRecorder === "undefined" ||
     typeof MediaRecorder.isTypeSupported !== "function"
   ) {
-    return undefined;
+    return { kind: "browser_default" };
   }
-  return PREFERRED_AUDIO_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+  const mimeType = PREFERRED_AUDIO_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+  return mimeType === undefined ? { kind: "browser_default" } : { kind: "explicit", mimeType };
 }
 
 export function stripWakeWord(text: string): { triggered: boolean; command: string } {
