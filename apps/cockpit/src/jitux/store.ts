@@ -2,41 +2,23 @@ import { useSyncExternalStore } from "react";
 import type { RuntimeState } from "../runtime";
 import type { ApprovalRequest, WorkItem } from "../types";
 import { initialJituxState, reduceJituxFrame } from "./reducer";
-import type {
-  CardLOD,
-  DeckRankReason,
-  EvidenceRef,
-  FrameSource,
-  JituxFrame,
-  JituxState,
-  PaneKind,
-  PaneRisk,
-  PaneVM,
-  PreparedAction,
-} from "./types";
+import {
+  createDeckLiveSession,
+  createDeckTrace,
+  resetDeckSessionChannelForTests,
+  type DeckLiveStopReason,
+  type DeckSessionTraceProbe,
+} from "./session-channel";
+import type { CardLOD, DeckRankReason, EvidenceRef, JituxFrame, JituxState, PaneKind, PaneRisk, PaneVM, PreparedAction } from "./types";
 
 type Listener = () => void;
 type Selector<T> = (state: DeckState) => T;
 
 export type DeckNavState = "idle" | "observing" | "agent_takeover" | "needs_user" | "acting" | "complete";
+export type DeckStreamStatus = "idle" | "opening" | "live" | "degraded";
+export type TraceProbe = DeckSessionTraceProbe;
 
-export type TraceProbe = {
-  id: string;
-  label: string;
-  source: FrameSource;
-  status: "queued" | "running" | "ready" | "degraded";
-  latencyMs?: number;
-};
-
-export type DeckCardVM = {
-  id: string;
-  paneId: string;
-  title: string;
-  lod: CardLOD;
-  status: "ghost" | "committed" | "hydrated";
-  risk: PaneRisk;
-  headline: string;
-};
+export type DeckCardVM = { id: string; paneId: string; title: string; lod: CardLOD; status: "ghost" | "committed" | "hydrated"; risk: PaneRisk; headline: string };
 
 export type DeckState = JituxState & {
   mode: "idle" | "mission_deck";
@@ -44,31 +26,19 @@ export type DeckState = JituxState & {
   generation: number;
   trace: TraceProbe[];
   caption: string;
+  streamStatus: DeckStreamStatus;
+  streamUrl: string | null;
+  wsUrl: string | null;
 };
 
 const emittedAt = "2026-06-03T15:00:00.000Z";
 
 export const initialDeckState: DeckState = {
-  ...initialJituxState,
-  mode: "idle",
-  navState: "idle",
-  generation: 0,
-  trace: [],
-  caption: "",
+  ...initialJituxState, mode: "idle", navState: "idle", generation: 0, trace: [], caption: "", streamStatus: "idle", streamUrl: null, wsUrl: null,
 };
 
 function emptyFactors() {
-  return {
-    risk: 0,
-    blockedness: 0,
-    approvalExpiryPressure: 0,
-    leasePressure: 0,
-    adapterDegradedWeight: 0,
-    evidenceGapWeight: 0,
-    userQueryRelevance: 0,
-    freshness: 0,
-    downstreamBlastRadius: 0,
-  };
+  return { risk: 0, blockedness: 0, approvalExpiryPressure: 0, leasePressure: 0, adapterDegradedWeight: 0, evidenceGapWeight: 0, userQueryRelevance: 0, freshness: 0, downstreamBlastRadius: 0 };
 }
 
 function reason(score: number, explanation: string, factors: Partial<ReturnType<typeof emptyFactors>>): DeckRankReason {
@@ -87,16 +57,7 @@ function seqFrame<T extends JituxFrame["type"]>(
   seq: number,
   data: Omit<Extract<JituxFrame, { type: T }>, FrameBaseKey>,
 ): Extract<JituxFrame, { type: T }> {
-  return {
-    v: 1,
-    type,
-    sessionId,
-    seq,
-    frameId: `${sessionId}.${seq}.${type}`,
-    emittedAt,
-    source: "frontend",
-    ...data,
-  } as Extract<JituxFrame, { type: T }>;
+  return { v: 1, type, sessionId, seq, frameId: `${sessionId}.${seq}.${type}`, emittedAt, source: "frontend", ...data } as Extract<JituxFrame, { type: T }>;
 }
 
 function rankRisk(work: WorkItem | undefined): PaneRisk {
@@ -116,33 +77,12 @@ function pane(
   counters: PaneVM["preview"]["counters"],
 ): PaneVM {
   return {
-    id,
-    kind,
-    title,
-    rank,
-    risk,
-    status,
-    lod,
+    id, kind, title, rank, risk, status, lod,
     confidence: Math.max(0.55, 0.96 - rank * 0.08),
     freshnessMs: rank * 15000,
-    preview: {
-      headline,
-      chips,
-      counters,
-    },
+    preview: { headline, chips, counters },
     preparedTabs: ["evidence", "replay", "systems", "actions", "raw"],
   };
-}
-
-function traceFor(runtime: RuntimeState): TraceProbe[] {
-  return [
-    { id: "session", label: "session", source: "frontend", status: "ready", latencyMs: 12 },
-    { id: "attention", label: "attention", source: "projection", status: runtime.attentionPackets.length > 0 ? "ready" : "degraded", latencyMs: 18 },
-    { id: "work-orders", label: "work orders", source: "projection", status: runtime.workItems.length > 0 ? "ready" : "degraded", latencyMs: 24 },
-    { id: "approvals", label: "approvals", source: "approval", status: runtime.approvalRequests.length > 0 ? "ready" : "queued", latencyMs: 31 },
-    { id: "adapters", label: "adapters", source: "adapter", status: runtime.systems.some((system) => system.health === "degraded" || system.health === "blocked") ? "degraded" : "ready", latencyMs: 33 },
-    { id: "replay", label: "replay", source: "replay", status: runtime.replayEvents.length > 0 ? "ready" : "queued", latencyMs: 39 },
-  ];
 }
 
 function actionsFor(blockedWork: WorkItem | undefined, approval: ApprovalRequest | undefined): PreparedAction[] {
@@ -372,18 +312,13 @@ function reduceDeckFrame(state: DeckState, frame: JituxFrame): DeckState {
   if (next === state) {
     return state;
   }
-  return {
-    ...state,
-    ...next,
-    mode: next.active ? "mission_deck" : "idle",
-    navState: navStateFor(next),
-    generation: state.generation + 1,
-  };
+  return { ...state, ...next, mode: next.active ? "mission_deck" : "idle", navState: navStateFor(next), generation: state.generation + 1 };
 }
 
 function createStore() {
   let state = initialDeckState;
   const listeners = new Set<Listener>();
+  let latestRuntime: RuntimeState | null = null;
 
   const emit = () => {
     for (const listener of listeners) {
@@ -406,6 +341,55 @@ function createStore() {
     return nextState;
   };
 
+  const applyFrames = (frames: JituxFrame[]) => setState(applyFramesTo(state, frames));
+
+  const markStreamDegraded = (caption: string) => {
+    setState({
+      ...state,
+      streamStatus: "degraded",
+      trace: latestRuntime ? createDeckTrace(latestRuntime, "degraded", "frontend") : state.trace,
+      caption,
+    });
+  };
+
+  const liveSession = createDeckLiveSession({
+    onOpening: () => {
+      const runtime = latestRuntime;
+      if (!runtime) return;
+      setState({
+        ...state,
+        streamStatus: "opening",
+        streamUrl: null,
+        wsUrl: null,
+        trace: createDeckTrace(runtime, "degraded", "frontend"),
+        caption: "Cached snapshot is visible while the broker session opens.",
+      });
+    },
+    onOpen: (descriptor) => {
+      setState({
+        ...state,
+        streamStatus: "opening",
+        streamUrl: descriptor.streamUrl,
+        wsUrl: descriptor.wsUrl,
+        caption: `Broker session ${descriptor.sessionId} opened; cached snapshot remains visible until live frames arrive.`,
+      });
+    },
+    onFrame: (frame, descriptor) => {
+      const runtime = latestRuntime;
+      applyFrames([frame]);
+      setState({
+        ...state,
+        streamStatus: "live",
+        streamUrl: descriptor.streamUrl,
+        wsUrl: descriptor.wsUrl,
+        trace: runtime ? createDeckTrace(runtime, "ready", "projection") : state.trace,
+        caption: "Live broker frames are driving the Mission Deck.",
+      });
+    },
+    onSessionUnavailable: () => markStreamDegraded("Broker session unavailable; cached snapshot remains visible."),
+    onStreamUnavailable: () => markStreamDegraded("Broker stream unavailable; cached snapshot remains visible."),
+  });
+
   return {
     getSnapshot: () => state,
     subscribe: (listener: Listener) => {
@@ -413,14 +397,32 @@ function createStore() {
       return () => listeners.delete(listener);
     },
     dispatch: (frame: JituxFrame) => setState(reduceDeckFrame(state, frame)),
-    applyFrames: (frames: JituxFrame[]) => setState(applyFramesTo(state, frames)),
+    applyFrames,
     igniteQueueBlockers: (runtime: RuntimeState) => {
+      latestRuntime = runtime;
+      liveSession.stop();
       const frames = createQueueBlockerFrames(runtime);
       setState({
         ...applyFramesTo(initialDeckState, frames),
-        trace: traceFor(runtime),
-        caption: "Queue blocker projection is visible before spoken output.",
+        trace: createDeckTrace(runtime, "degraded", "frontend"),
+        caption: "Cached snapshot is visible while the broker session opens.",
+        streamStatus: "degraded",
+        streamUrl: null,
+        wsUrl: null,
       });
+    },
+    startLiveQueueBlockers: () => {
+      const runtime = latestRuntime;
+      if (!runtime || !state.active) {
+        return () => undefined;
+      }
+      return liveSession.start();
+    },
+    stopLiveQueueBlockers: (reason: DeckLiveStopReason = "deactivate") => {
+      liveSession.stop();
+      if (reason === "barge_in" && state.active) {
+        markStreamDegraded("Live broker stream paused for barge-in; cached snapshot remains visible.");
+      }
     },
     promotePane: (paneId: string, explanation: string) => {
       const current = state.panes[paneId];
@@ -433,7 +435,12 @@ function createStore() {
       });
       setState(reduceDeckFrame(state, frame));
     },
-    clear: () => setState(initialDeckState),
+    clear: () => {
+      liveSession.stop();
+      latestRuntime = null;
+      resetDeckSessionChannelForTests();
+      setState(initialDeckState);
+    },
     rankedPanes: () => getRankedPanes(state),
     cardsForPane: (paneId: string) => getCardsForPane(state, paneId),
   };
@@ -449,10 +456,7 @@ export function useDeckSnapshot<T>(selector?: Selector<T>): DeckState | T {
 }
 
 export function getRankedPanes(state: DeckState): PaneVM[] {
-  return state.paneOrder
-    .map((id) => state.panes[id])
-    .filter((pane): pane is PaneVM => pane !== undefined)
-    .slice(0, 20);
+  return state.paneOrder.map((id) => state.panes[id]).filter((pane): pane is PaneVM => pane !== undefined).slice(0, 20);
 }
 
 export function getCardsForPane(state: DeckState, paneId: string): DeckCardVM[] {
@@ -462,13 +466,9 @@ export function getCardsForPane(state: DeckState, paneId: string): DeckCardVM[] 
   }
   return [
     {
-      id: `${pane.id}.card`,
-      paneId: pane.id,
-      title: pane.title,
-      lod: pane.lod,
+      id: `${pane.id}.card`, paneId: pane.id, title: pane.title, lod: pane.lod,
       status: pane.lod === "ghost" ? "ghost" : pane.lod === "focus" ? "hydrated" : "committed",
-      risk: pane.risk,
-      headline: pane.preview.headline,
+      risk: pane.risk, headline: pane.preview.headline,
     },
   ];
 }
