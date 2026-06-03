@@ -434,6 +434,37 @@ function createStore() {
         markStreamDegraded("Live broker stream paused for barge-in; cached snapshot remains visible.");
       }
     },
+    // Driven by the realtime reasoning agent: re-ignite the deck for this turn so
+    // panes fly in and the Now rail goes purple the instant a question is asked,
+    // before any speech. No-op until a runtime snapshot is known (Now view mounted).
+    beginAgentTurn: (label?: string) => {
+      const runtime = latestRuntime;
+      if (!runtime) {
+        return;
+      }
+      liveSession.stop();
+      primeQueueBlockers(runtime);
+      const trimmed = (label ?? "").trim();
+      if (trimmed.length > 0) {
+        setState({ ...state, caption: `Agent investigating: ${trimmed}` });
+      }
+      liveSession.start();
+    },
+    // One reshuffle per reasoning step / tool call: advance focus to the next ranked
+    // pane so the deck visibly moves at the speed of the agent's reasoning.
+    pulseAgentStep: (label: string) => {
+      const ranked = getRankedPanes(state);
+      if (ranked.length === 0 || !state.sessionId) {
+        return;
+      }
+      const currentIndex = ranked.findIndex((pane) => pane.id === state.focusPaneId);
+      const nextPane = ranked[(currentIndex + 1) % ranked.length];
+      const frame = seqFrame("focus.change", state.sessionId, state.lastSeq + 1, {
+        paneId: nextPane.id,
+        reason: reason(0.8, label, { userQueryRelevance: 0.85, freshness: 0.6 }),
+      });
+      setState(reduceDeckFrame(state, frame));
+    },
     promotePane: (paneId: string, explanation: string) => {
       const current = state.panes[paneId];
       if (!current || !state.sessionId) {

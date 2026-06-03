@@ -12,6 +12,7 @@ import {
   stripWakeWord,
 } from "../lib/voiceAssistantConfig";
 import { runVoiceTurn } from "../lib/voiceAssistantTurn";
+import { deckStore } from "../jitux/store";
 import type { VoiceAssistantApi, VoiceState } from "../lib/voiceAssistantTypes";
 
 export { stripWakeWord };
@@ -142,6 +143,10 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     turnAbortRef.current = turnAbort;
     setBoth("thinking");
     speechQueueRef.current = [];
+    // Hand the turn to the deck the instant it starts: purple takeover + panes fly
+    // in, and each reasoning step / tool call reshuffles focus — so the deck visibly
+    // moves at the speed of the agent's reasoning, before it speaks.
+    deckStore.beginAgentTurn(command);
     try {
       const lastText = await runVoiceTurn({
         command,
@@ -149,6 +154,7 @@ export function useVoiceAssistant(): VoiceAssistantApi {
         signal: turnAbort.signal,
         enqueueSpeech,
         setThinking: () => setBoth("thinking"),
+        onAgentStep: (label) => deckStore.pulseAgentStep(label),
       });
       setReply(lastText);
       if (lastText.length === 0) enqueueSpeech("Sorry, I did not catch that.", turnAbort.signal);

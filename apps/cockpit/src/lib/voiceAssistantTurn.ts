@@ -27,6 +27,7 @@ interface VoiceTurnOptions {
     timeoutMs: number,
   ) => Promise<VoiceJituxDeckReadiness>;
   deckFrameTimeoutMs?: number;
+  onAgentStep?: (label: string) => void;
 }
 
 type FastReadOnlyTool =
@@ -81,6 +82,7 @@ export async function runVoiceTurn({
   openDeckSession = openVoiceJituxSession,
   waitForDeckFrame = waitForUsefulVoiceDeckFrame,
   deckFrameTimeoutMs = JITUX_FIRST_FRAME_TIMEOUT_MS,
+  onAgentStep = () => undefined,
 }: VoiceTurnOptions): Promise<string> {
   history.push({ role: "user", content: command });
   const deckSession = openDeckSession(command, signal);
@@ -97,6 +99,7 @@ export async function runVoiceTurn({
   );
   const fastDecision = detectFastReadOnlyTool(command);
   if (fastDecision.kind === "local_tool") {
+    onAgentStep(fastDecision.tool);
     const output = await executeVoiceTool(fastDecision.tool, "{}", signal);
     enqueueDeckAwareSpeech(output);
     history.push({ role: "assistant", content: output });
@@ -139,6 +142,7 @@ export async function runVoiceTurn({
   for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
     pending = "";
     firstChunk = true;
+    onAgentStep("reasoning");
     const result = await reasonStream(history, onDelta, signal, VOICE_MODEL, VOICE_TOOL_SPECS);
     enqueueDeckAwareSpeech(pending);
     pending = "";
@@ -155,6 +159,7 @@ export async function runVoiceTurn({
     history.push({ role: "assistant", content: result.text, tool_calls: toolCalls });
     setThinking();
     for (const call of result.toolCalls) {
+      onAgentStep(call.name);
       const output = await executeVoiceTool(call.name, call.arguments, signal);
       history.push({ role: "tool", tool_call_id: call.id, content: output });
     }
