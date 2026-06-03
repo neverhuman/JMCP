@@ -614,3 +614,11 @@ Deferred until Codex releases jmcp-api and the contract lands: jmcp-api /now SSE
 voice<->deck wiring (WS-G). Command surface: cargo build/test -p jmcp-now; npm --workspace @jmcp/cockpit
 typecheck|test; jankurai audit. Claude integrates the worktree branches into feature/aiux and runs
 central jankurai. Owner: Claude. Will append proof + changed-paths before handing back.
+
+## 2026-06-03T15:20:53Z - Codex (feature/aiux) - AIUX CLAIM: realtime voice fast path
+
+User emphasized the realtime voice agent must stay extremely fast and can escalate to heavier reasoning behind the scenes. Claiming only `apps/cockpit/src/lib/voiceAssistantTurn.ts`, adjacent voice tests, and this append-only log for a small fast-path optimization that works with the current dirty voice refactor. No deck UI, package files, Rust crates, API route files, scripts, CI, docs, or schema changes in this voice slice.
+
+## 2026-06-03T15:23:07Z - Codex (feature/aiux) - AIUX realtime voice proof
+
+Expanded the voice slice to include the coherent existing voice refactor required by `voiceAssistantTurn.ts`: `apps/cockpit/src/hooks/useVoiceAssistant.ts`, `apps/cockpit/src/lib/voiceAssistantConfig.ts`, `apps/cockpit/src/lib/voiceAssistantTurn.ts`, `apps/cockpit/src/lib/voiceAssistantTypes.ts`, `apps/cockpit/src/voice-assistant.test.ts`, and this log. Added a fast read-only voice path for common status/queue/work-order/attention/action questions that bypasses model reasoning and uses local JMCP tools immediately, while mutation-looking requests still fall through to the confirmation-aware model path. Proof: `rtk npm --workspace @jmcp/cockpit run test -- --run src/voice-assistant.test.ts` (40 passed), `rtk npm --workspace @jmcp/cockpit run typecheck`, and `rtk just score` (`score=92 raw=92 caps=0 findings=1`).

@@ -13,6 +13,7 @@ import {
   type MicrophoneInspection,
 } from "./lib/microphone";
 import { VOICE_TOOL_SPECS, executeVoiceTool } from "./lib/voiceTools";
+import { detectFastReadOnlyTool, runVoiceTurn } from "./lib/voiceAssistantTurn";
 
 // A minimal stand-in for the Fetch API Response surface that speechClient reads:
 // `.ok`, `.json()`, and `.blob()`. Each test builds one of these via the helpers
@@ -366,6 +367,44 @@ describe("voiceTools", () => {
     const call = fetchDouble.mock.calls[0];
     expect(call[0]).toContain("/microtasks/research.concept-scan/submit");
     expect(call[1]?.method).toBe("POST");
+  });
+});
+
+describe("runVoiceTurn fast path", () => {
+  it("routes simple read-only intents without using the model", async () => {
+    expect(detectFastReadOnlyTool("how is JMCP doing?")).toBe("jmcp_status");
+    expect(detectFastReadOnlyTool("what is blocking the queue right now?")).toBe(
+      "microtask_queue",
+    );
+    expect(detectFastReadOnlyTool("queue the microtask")).toBeNull();
+    expect(detectFastReadOnlyTool("can you start the bug scan?")).toBeNull();
+  });
+
+  it("answers status through the local tool before model reasoning", async () => {
+    const fetchDouble = installFetch((input) => {
+      if (input.includes("/jmcp/health")) {
+        return Promise.resolve(
+          jsonResponse({ ok: true, systems: [{ name: "jmcpd" }, { name: "jeryu" }] }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${input}`));
+    });
+    const spoken: string[] = [];
+    const history = [{ role: "system" as const, content: "system" }];
+
+    const answer = await runVoiceTurn({
+      command: "how is JMCP doing?",
+      history,
+      signal: new AbortController().signal,
+      enqueueSpeech: (text) => spoken.push(text),
+      setThinking: vi.fn(),
+    });
+
+    expect(answer).toContain("JMCP is healthy");
+    expect(spoken).toEqual([answer]);
+    expect(fetchDouble).toHaveBeenCalledTimes(1);
+    expect(fetchDouble.mock.calls[0][0]).toContain("/jmcp/health");
+    expect(history[history.length - 1]).toMatchObject({ role: "assistant", content: answer });
   });
 });
 
