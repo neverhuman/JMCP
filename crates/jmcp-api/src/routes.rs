@@ -1,4 +1,4 @@
-use crate::{routes_actions::*, routes_approvals::*, routes_extra::*};
+use crate::{jitux::*, routes_actions::*, routes_approvals::*, routes_extra::*};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -15,6 +15,10 @@ use uuid::Uuid;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/jitux/sessions", post(create_jitux_session))
+        .route("/jitux/sessions/:id/stream", get(jitux_session_stream))
+        .route("/jitux/sessions/:id/ws", get(jitux_session_ws))
+        .route("/jitux/sessions/:id/action", post(jitux_session_action))
         .route("/systems", get(systems))
         .route("/microtasks", get(microtasks))
         .route("/microtasks/queue", get(microtask_queue))
