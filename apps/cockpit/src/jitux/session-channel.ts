@@ -57,7 +57,7 @@ export function createDeckTrace(runtime: RuntimeState, status: DeckSessionTraceP
 export function createDeckLiveSession(callbacks: DeckLiveSessionCallbacks) {
   let abortController: AbortController | null = null;
   let closeStream: (() => void) | null = null;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
   let token = 0;
 
   const clearRetryTimer = () => {
