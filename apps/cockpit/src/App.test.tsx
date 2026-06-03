@@ -3,12 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { views } from "./fixtures";
+import { resetDeckStoreForTests } from "./jitux/store";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("test api unavailable"))));
+  resetDeckStoreForTests();
 });
 
 afterEach(() => {
+  resetDeckStoreForTests();
   vi.unstubAllGlobals();
   cleanup();
 });
