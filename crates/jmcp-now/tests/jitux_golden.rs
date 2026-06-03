@@ -1,371 +1,220 @@
-use chrono::{DateTime, TimeZone, Utc};
-use jmcp_now::{
-    Accent, ActionMethod, Card, CardKind, CardStatus, DrilldownKind, DrilldownRef, PaneKind,
-    PaneStatus, PreparedAction, RankFactorKind, RankFactors, RankReason, RiskBand, SafetyClass,
-    Scene, SceneLayout, SceneMode,
+use std::{
+    io::Write,
+    process::{Command, Stdio},
 };
-use schemars::schema_for;
-use serde::Serialize;
-use serde_json::json;
 
-const SCENE_GOLDEN: &str = include_str!("golden/queue_blockers_scene.json");
-const SCHEMA_GOLDEN: &str = include_str!("golden/scene.schema.json");
+use chrono::{Duration, TimeZone, Utc};
+use jmcp_domain::{
+    ApprovalChallenge, ApprovalChallengeState, ApprovalChannel, Attention, AttentionLevel,
+    Evidence, JituxFrame, JituxFrameBase, JituxFrameSource, PaneVm, Task, WorkOrder,
+    WorkOrderStatus,
+};
+use jmcp_now::{queue_blockers_panes, queue_blockers_projection, NowReads};
+use uuid::Uuid;
+
+const JITUX_FRAME_SCHEMA: &str =
+    include_str!("../../../schemas/jitux/1.0.0/jitux-frame.schema.json");
 
 #[test]
-fn scene_json_matches_golden() {
-    let actual = pretty(&golden_scene());
-    assert_eq!(actual, SCENE_GOLDEN);
+fn queue_blocker_panes_round_trip_as_canonical_pane_vms() {
+    let panes = queue_blockers_panes(&reads(), fixed_time());
 
-    let value: serde_json::Value = serde_json::from_str(&actual).expect("scene json");
-    let first_card = &value["cards"][0];
-    assert!(first_card.get("whyNow").is_some());
-    assert!(first_card.get("rankReason").is_some());
-    assert!(first_card.get("evidenceRefs").is_some());
-    assert!(first_card["actions"][0].get("safetyClass").is_some());
+    assert_eq!(panes.len(), 2);
+    let json = serde_json::to_value(&panes).expect("canonical panes serialize");
+    let decoded: Vec<PaneVm> = serde_json::from_value(json).expect("canonical panes deserialize");
+
+    assert_eq!(decoded, panes);
+    assert!(panes
+        .iter()
+        .any(|pane| pane.title == "Bridge write lease"
+            && pane.preview.headline.contains("MCP bridge")));
 }
 
 #[test]
-fn scene_schema_matches_golden() {
-    let actual = pretty(&schema_for!(Scene));
-    assert_eq!(actual, SCHEMA_GOLDEN);
+fn queue_blocker_pane_upsert_frames_validate_against_canonical_schema() {
+    let panes = queue_blockers_panes(&reads(), fixed_time());
+
+    for (index, pane) in panes.into_iter().enumerate() {
+        let frame = JituxFrame::PaneUpsert {
+            base: base(index as u64 + 1),
+            pane,
+        };
+        let value = serde_json::to_value(&frame).expect("pane frame json");
+
+        validate_against_jitux_schema(&value);
+        assert_eq!(
+            serde_json::from_value::<JituxFrame>(value).expect("pane frame round trip"),
+            frame
+        );
+    }
 }
 
 #[test]
-fn enum_wire_values_are_snake_case() {
+fn queue_blocker_action_ready_frames_validate_against_canonical_schema() {
+    let projection = queue_blockers_projection(&reads(), fixed_time());
+    let pane = projection
+        .panes
+        .iter()
+        .find(|pane| pane.title == "Bridge write lease")
+        .expect("focused pane");
+    let action = projection
+        .prepared_actions
+        .get(&pane.id)
+        .expect("prepared actions")
+        .iter()
+        .find(|action| action.requires_approval)
+        .expect("approval action")
+        .clone();
+
+    let frame = JituxFrame::ActionReady {
+        base: base(100),
+        pane_id: pane.id.clone(),
+        action,
+    };
+    let value = serde_json::to_value(&frame).expect("action frame json");
+
+    validate_against_jitux_schema(&value);
     assert_eq!(
-        json!({
-            "paneKind": wire(&[
-                PaneKind::Queue,
-                PaneKind::Jeryu,
-                PaneKind::Jailgun,
-                PaneKind::Jekko,
-                PaneKind::Evidence,
-                PaneKind::Replay,
-                PaneKind::Approval,
-                PaneKind::AdapterHealth,
-                PaneKind::Memory,
-                PaneKind::Autonomy,
-            ]),
-            "paneStatus": wire(&[
-                PaneStatus::Predicted,
-                PaneStatus::Incubating,
-                PaneStatus::Warm,
-                PaneStatus::Active,
-                PaneStatus::Degraded,
-            ]),
-            "sceneMode": wire(&[
-                SceneMode::Focus,
-                SceneMode::Fan,
-                SceneMode::Compare,
-                SceneMode::Tunnel,
-            ]),
-            "accent": wire(&[
-                Accent::Purple,
-                Accent::Red,
-                Accent::Amber,
-                Accent::Green,
-                Accent::Blue,
-                Accent::Slate,
-            ]),
-            "sceneLayout": wire(&[
-                SceneLayout::Stack,
-                SceneLayout::Timeline,
-                SceneLayout::Matrix,
-                SceneLayout::Drilldown,
-            ]),
-            "cardKind": wire(&[
-                CardKind::QueueBlocker,
-                CardKind::Lease,
-                CardKind::Approval,
-                CardKind::Evidence,
-                CardKind::Incident,
-                CardKind::AdapterHealth,
-                CardKind::Replay,
-                CardKind::Autonomy,
-                CardKind::Memory,
-            ]),
-            "cardStatus": wire(&[
-                CardStatus::Probing,
-                CardStatus::Ranked,
-                CardStatus::Verified,
-            ]),
-            "riskBand": wire(&[
-                RiskBand::Low,
-                RiskBand::Medium,
-                RiskBand::High,
-            ]),
-            "safetyClass": wire(&[
-                SafetyClass::ReadOnly,
-                SafetyClass::BoundedAuto,
-                SafetyClass::ApprovalRequired,
-                SafetyClass::ManualOnly,
-            ]),
-            "drilldownKind": wire(&[
-                DrilldownKind::Evidence,
-                DrilldownKind::Lease,
-                DrilldownKind::Approval,
-                DrilldownKind::Replay,
-                DrilldownKind::System,
-                DrilldownKind::Raw,
-            ]),
-            "actionMethod": wire(&[
-                ActionMethod::Get,
-                ActionMethod::Post,
-            ]),
-            "rankFactorKind": wire(&[
-                RankFactorKind::Risk,
-                RankFactorKind::Actionability,
-                RankFactorKind::Freshness,
-                RankFactorKind::BlastRadius,
-                RankFactorKind::LeasePressure,
-                RankFactorKind::UserRelevance,
-            ]),
-        }),
-        json!({
-            "paneKind": ["queue", "jeryu", "jailgun", "jekko", "evidence", "replay", "approval", "adapter_health", "memory", "autonomy"],
-            "paneStatus": ["predicted", "incubating", "warm", "active", "degraded"],
-            "sceneMode": ["focus", "fan", "compare", "tunnel"],
-            "accent": ["purple", "red", "amber", "green", "blue", "slate"],
-            "sceneLayout": ["stack", "timeline", "matrix", "drilldown"],
-            "cardKind": ["queue_blocker", "lease", "approval", "evidence", "incident", "adapter_health", "replay", "autonomy", "memory"],
-            "cardStatus": ["probing", "ranked", "verified"],
-            "riskBand": ["low", "medium", "high"],
-            "safetyClass": ["read_only", "bounded_auto", "approval_required", "manual_only"],
-            "drilldownKind": ["evidence", "lease", "approval", "replay", "system", "raw"],
-            "actionMethod": ["get", "post"],
-            "rankFactorKind": ["risk", "actionability", "freshness", "blast_radius", "lease_pressure", "user_relevance"],
-        })
+        serde_json::from_value::<JituxFrame>(value).expect("action frame round trip"),
+        frame
     );
 }
 
-#[test]
-#[ignore = "writes committed golden fixtures when JMCP_NOW_WRITE_GOLDEN=1"]
-fn write_golden_files() {
-    if std::env::var("JMCP_NOW_WRITE_GOLDEN").as_deref() != Ok("1") {
-        return;
-    }
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
-    std::fs::create_dir_all(&root).expect("golden dir");
-    std::fs::write(
-        root.join("queue_blockers_scene.json"),
-        pretty(&golden_scene()),
-    )
-    .expect("scene golden write");
-    std::fs::write(root.join("scene.schema.json"), pretty(&schema_for!(Scene)))
-        .expect("schema golden write");
+fn validate_against_jitux_schema(instance: &serde_json::Value) {
+    let schema: serde_json::Value =
+        serde_json::from_str(JITUX_FRAME_SCHEMA).expect("canonical JITUX schema parses");
+    let payload = serde_json::json!({
+        "schema": schema,
+        "instance": instance,
+    });
+    let mut child = Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import json
+import jsonschema
+import sys
+
+payload = json.load(sys.stdin)
+jsonschema.Draft202012Validator(payload["schema"]).validate(payload["instance"])
+"#,
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("python3 jsonschema validator starts");
+
+    let mut stdin = child.stdin.take().expect("validator stdin");
+    stdin
+        .write_all(serde_json::to_string(&payload).unwrap().as_bytes())
+        .expect("validator input write");
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("validator exits");
+    assert!(
+        output.status.success(),
+        "JITUX schema validation failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
-fn golden_scene() -> Scene {
-    Scene {
-        key: "queue_blockers".to_owned(),
-        kind: PaneKind::Queue,
-        mode: SceneMode::Focus,
-        accent: Accent::Purple,
-        title: "What's blocking the queue?".to_owned(),
-        layout: SceneLayout::Stack,
-        status: PaneStatus::Active,
-        generation: 42,
-        captured_at: fixed_time(),
-        cards: vec![
-            card(
-                "queue-card",
-                CardKind::QueueBlocker,
-                CardStatus::Verified,
-                RiskBand::High,
-                RankFactorKind::Risk,
+fn reads() -> NowReads {
+    let focused_id = uuid("22222222-2222-4222-8222-222222222222");
+    let other_id = uuid("99999999-9999-4999-8999-999999999991");
+    let state = jmcp_app::AppState::new(jmcp_store::SqliteStore::in_memory().unwrap());
+    NowReads {
+        work_orders: vec![
+            work_order(
+                focused_id,
+                "Bridge write lease",
+                WorkOrderStatus::AwaitingApproval,
             )
-            .with_actions(all_actions())
-            .with_drilldowns(all_drilldowns())
-            .with_evidence_refs(vec![drilldown("evidence:1", DrilldownKind::Evidence)]),
-            card(
-                "lease-card",
-                CardKind::Lease,
-                CardStatus::Ranked,
-                RiskBand::Medium,
-                RankFactorKind::LeasePressure,
-            ),
-            card(
-                "approval-card",
-                CardKind::Approval,
-                CardStatus::Probing,
-                RiskBand::Low,
-                RankFactorKind::Actionability,
-            ),
-            card(
-                "evidence-card",
-                CardKind::Evidence,
-                CardStatus::Verified,
-                RiskBand::Medium,
-                RankFactorKind::Freshness,
-            ),
-            card(
-                "incident-card",
-                CardKind::Incident,
-                CardStatus::Ranked,
-                RiskBand::High,
-                RankFactorKind::BlastRadius,
-            ),
-            card(
-                "adapter-card",
-                CardKind::AdapterHealth,
-                CardStatus::Ranked,
-                RiskBand::Medium,
-                RankFactorKind::UserRelevance,
-            ),
-            card(
-                "replay-card",
-                CardKind::Replay,
-                CardStatus::Verified,
-                RiskBand::Low,
-                RankFactorKind::Freshness,
-            ),
-            card(
-                "autonomy-card",
-                CardKind::Autonomy,
-                CardStatus::Ranked,
-                RiskBand::Medium,
-                RankFactorKind::Actionability,
-            ),
-            card(
-                "memory-card",
-                CardKind::Memory,
-                CardStatus::Ranked,
-                RiskBand::Low,
-                RankFactorKind::UserRelevance,
+            .with_evidence(),
+            work_order(
+                other_id,
+                "Local inventory probe",
+                WorkOrderStatus::Submitted,
             ),
         ],
-        narration_hint:
-            "Name the highest ranked blocker, then show approval, lease, and evidence refs."
-                .to_owned(),
+        leases: vec![jmcp_domain::Lease {
+            work_order_id: focused_id,
+            holder: "jmcpd".to_owned(),
+            expires_at: fixed_time() + Duration::minutes(10),
+        }],
+        attention_packets: jmcp_app::attention_inbox_sample(),
+        approval_challenges: vec![ApprovalChallenge {
+            id: uuid("88888888-8888-4888-8888-888888888881"),
+            work_order_id: focused_id,
+            approver: "ops".to_owned(),
+            channel: ApprovalChannel::Local,
+            target_user_id: None,
+            target_chat_id: None,
+            token_hash: "sha256:test".to_owned(),
+            expires_at: fixed_time() + Duration::minutes(20),
+            state: ApprovalChallengeState::Pending,
+            decision: None,
+            created_at: fixed_time() - Duration::minutes(5),
+            updated_at: fixed_time() - Duration::minutes(4),
+        }],
+        incidents: jmcp_app::incident_records_sample(),
+        autonomous_actions: state.list_autonomous_actions().unwrap(),
     }
 }
 
-trait CardFixture {
-    fn with_actions(self, actions: Vec<PreparedAction>) -> Self;
-    fn with_drilldowns(self, drilldowns: Vec<DrilldownRef>) -> Self;
-    fn with_evidence_refs(self, evidence_refs: Vec<DrilldownRef>) -> Self;
+trait WorkOrderFixture {
+    fn with_evidence(self) -> Self;
 }
 
-impl CardFixture for Card {
-    fn with_actions(mut self, actions: Vec<PreparedAction>) -> Self {
-        self.actions = actions;
-        self
-    }
-
-    fn with_drilldowns(mut self, drilldowns: Vec<DrilldownRef>) -> Self {
-        self.drilldowns = drilldowns;
-        self
-    }
-
-    fn with_evidence_refs(mut self, evidence_refs: Vec<DrilldownRef>) -> Self {
-        self.evidence_refs = evidence_refs;
+impl WorkOrderFixture for WorkOrder {
+    fn with_evidence(mut self) -> Self {
+        self.evidence.push(Evidence {
+            kind: "service-card".to_owned(),
+            uri: "sha256:evidence".to_owned(),
+            captured_at: fixed_time() - Duration::minutes(3),
+        });
         self
     }
 }
 
-fn card(
-    id: &str,
-    kind: CardKind,
-    status: CardStatus,
-    risk: RiskBand,
-    dominant_factor: RankFactorKind,
-) -> Card {
-    Card {
-        id: id.to_owned(),
-        kind,
-        title: format!("{id} title"),
-        status,
-        rank: 0.75,
-        risk,
-        why_now: format!("{id} is visible now because the queue is blocked."),
-        rank_reason: RankReason {
-            score: 0.75,
-            factors: RankFactors {
-                risk: 0.8,
-                actionability: 0.7,
-                freshness: 0.6,
-                blast_radius: 0.5,
-                lease_pressure: 0.4,
-                user_relevance: 0.3,
-            },
-            summary: format!("{id} ranks here for a visible operational reason."),
-            dominant_factor,
+fn work_order(id: Uuid, subject: &str, status: WorkOrderStatus) -> WorkOrder {
+    WorkOrder {
+        id,
+        subject: subject.to_owned(),
+        task: Task {
+            kind: "jmcp.test".to_owned(),
+            payload: serde_json::json!({ "id": id.to_string() }),
         },
-        evidence_refs: Vec::new(),
-        drilldowns: Vec::new(),
-        actions: Vec::new(),
+        status,
+        evidence: Vec::new(),
+        attention: vec![Attention {
+            level: AttentionLevel::Warn,
+            reason: "test attention".to_owned(),
+        }],
+        created_at: fixed_time() - Duration::minutes(30),
+        updated_at: fixed_time() - Duration::minutes(5),
     }
 }
 
-fn all_actions() -> Vec<PreparedAction> {
-    vec![
-        action("read", SafetyClass::ReadOnly, ActionMethod::Get),
-        action("auto", SafetyClass::BoundedAuto, ActionMethod::Post),
-        action(
-            "approval",
-            SafetyClass::ApprovalRequired,
-            ActionMethod::Post,
-        ),
-        action("manual", SafetyClass::ManualOnly, ActionMethod::Get),
-    ]
-}
-
-fn action(id: &str, safety_class: SafetyClass, method: ActionMethod) -> PreparedAction {
-    PreparedAction {
-        id: format!("action:{id}"),
-        label: format!("{id} action"),
-        safety_class,
-        ready: !matches!(
-            safety_class,
-            SafetyClass::ApprovalRequired | SafetyClass::ManualOnly
-        ),
-        reason: format!("{id} action is governed by its safety class."),
-        target: format!("targets/{id}"),
-        method,
+fn base(seq: u64) -> JituxFrameBase {
+    JituxFrameBase {
+        v: 1,
+        session_id: "jmcp_now_test".to_owned(),
+        seq,
+        frame_id: format!("now_frame_{seq:04}"),
+        emitted_at: fixed_time(),
+        source: JituxFrameSource::Projection,
+        ttl_ms: Some(30_000),
     }
 }
 
-fn all_drilldowns() -> Vec<DrilldownRef> {
-    vec![
-        drilldown("evidence", DrilldownKind::Evidence),
-        drilldown("lease", DrilldownKind::Lease),
-        drilldown("approval", DrilldownKind::Approval),
-        drilldown("replay", DrilldownKind::Replay),
-        drilldown("system", DrilldownKind::System),
-        drilldown("raw", DrilldownKind::Raw),
-    ]
-}
-
-fn drilldown(id: &str, kind: DrilldownKind) -> DrilldownRef {
-    DrilldownRef {
-        id: format!("drilldown:{id}"),
-        label: format!("{id} drilldown"),
-        kind,
-        target: format!("targets/{id}"),
-    }
-}
-
-fn fixed_time() -> DateTime<Utc> {
+fn fixed_time() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2025, 1, 1, 12, 0, 0)
         .single()
         .expect("valid fixed time")
 }
 
-fn pretty<T>(value: &T) -> String
-where
-    T: Serialize,
-{
-    let mut json = serde_json::to_string_pretty(value).expect("pretty json");
-    json.push('\n');
-    json
-}
-
-fn wire<T>(variants: &[T]) -> Vec<serde_json::Value>
-where
-    T: Serialize,
-{
-    variants
-        .iter()
-        .map(|variant| serde_json::to_value(variant).expect("enum json"))
-        .collect()
+fn uuid(value: &str) -> Uuid {
+    Uuid::parse_str(value).expect("valid uuid")
 }

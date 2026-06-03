@@ -3,17 +3,19 @@ use std::{collections::HashMap, sync::Arc};
 use arc_swap::ArcSwap;
 use chrono::{DateTime, Utc};
 use jmcp_app::{AppResult, AppState};
+use jmcp_domain::{JituxEvidenceRef, PaneRankReason, PaneVm, PreparedAction};
 
-use crate::{
-    contract::{NowSnapshot, Scene},
-    reads::NowReads,
-};
+use crate::{reads::NowReads, scenes::queue_blockers::QueueBlockersProjection};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CachedNow {
     pub generation: i64,
-    pub snapshot: NowSnapshot,
-    pub scenes: HashMap<String, Scene>,
+    pub captured_at: DateTime<Utc>,
+    pub default_pane: String,
+    pub panes: Vec<PaneVm>,
+    pub rank_reasons: Vec<PaneRankReason>,
+    pub prepared_actions: HashMap<String, Vec<PreparedAction>>,
+    pub evidence_refs: HashMap<String, Vec<JituxEvidenceRef>>,
     pub reads: NowReads,
 }
 
@@ -63,14 +65,20 @@ impl NowProjection {
 
 impl CachedNow {
     pub fn build(generation: i64, captured_at: DateTime<Utc>, reads: NowReads) -> Self {
-        let mut scenes = HashMap::new();
-        let queue = crate::scenes::queue_blockers::compose(&reads, generation, captured_at);
-        scenes.insert(queue.key.clone(), queue.clone());
-        let snapshot = crate::scenes::queue_blockers::snapshot(&queue, generation, captured_at);
+        let QueueBlockersProjection {
+            panes,
+            rank_reasons,
+            prepared_actions,
+            evidence_refs,
+        } = crate::scenes::queue_blockers::compose(&reads, captured_at);
         Self {
             generation,
-            snapshot,
-            scenes,
+            captured_at,
+            default_pane: crate::scenes::queue_blockers::KEY.to_owned(),
+            panes,
+            rank_reasons,
+            prepared_actions,
+            evidence_refs,
             reads,
         }
     }

@@ -1,16 +1,18 @@
 use chrono::{Duration, TimeZone, Utc};
 use jmcp_domain::{
-    ApprovalChallenge, ApprovalChallengeState, ApprovalChannel, Attention, AttentionLevel,
-    Evidence, Lease, Task, WorkOrder, WorkOrderStatus,
+    ActionSafetyClass, ApprovalChallenge, ApprovalChallengeState, ApprovalChannel, Attention,
+    AttentionLevel, CardLod, Evidence, Lease, PaneKind, PaneRisk, PaneStatus, PreparedTab, Task,
+    WorkOrder, WorkOrderStatus,
 };
 use jmcp_now::{
-    scenes::queue_blockers, CachedNow, CardStatus, DrilldownKind, NowProjection, NowReads,
-    SafetyClass,
+    queue_blockers_projection,
+    scenes::queue_blockers::{self, QueueBlockersProjection},
+    CachedNow, NowProjection, NowReads,
 };
 use uuid::Uuid;
 
 #[test]
-fn queue_blockers_scene_joins_attention_and_prefetch_refs() {
+fn queue_blockers_panes_join_attention_and_canonical_sidecars() {
     let state = jmcp_app::AppState::new(jmcp_store::SqliteStore::in_memory().unwrap());
     let attention = jmcp_app::attention_inbox_sample();
     let incidents = jmcp_app::incident_records_sample();
@@ -57,40 +59,72 @@ fn queue_blockers_scene_joins_attention_and_prefetch_refs() {
         autonomous_actions: actions,
     };
 
-    let scene = queue_blockers::compose(&reads, 7, fixed_time());
+    let projection = queue_blockers_projection(&reads, fixed_time());
 
-    assert_eq!(scene.cards.len(), 2);
-    let focused = scene
-        .cards
+    assert_eq!(projection.panes.len(), 2);
+    let focused = pane(&projection, focused_id);
+    assert_eq!(focused.kind, PaneKind::Queue);
+    assert_eq!(focused.lod, CardLod::Focus);
+    assert_eq!(focused.risk, PaneRisk::High);
+    assert_eq!(focused.status, PaneStatus::Active);
+    assert_eq!(focused.preview.headline, attention[0].why_now);
+    assert!(focused.preview.chips.contains(&"evidence".to_owned()));
+    assert!(focused
+        .preview
+        .chips
+        .contains(&"approval_required".to_owned()));
+    assert!(focused.prepared_tabs.contains(&PreparedTab::Evidence));
+    assert!(focused.prepared_tabs.contains(&PreparedTab::Actions));
+    assert!(focused.prepared_tabs.contains(&PreparedTab::Systems));
+
+    let focused_actions = projection.prepared_actions.get(&focused.id).unwrap();
+    assert!(focused_actions
         .iter()
-        .find(|card| card.id == focused_id.to_string())
+        .any(|action| action.safety == ActionSafetyClass::ReadOnly));
+    assert!(focused_actions
+        .iter()
+        .any(|action| action.safety == ActionSafetyClass::ApprovalRequired));
+    assert!(focused_actions
+        .iter()
+        .any(|action| action.safety == ActionSafetyClass::BoundedAuto));
+    assert!(focused_actions
+        .iter()
+        .all(|action| action.validate_no_secret_material().is_ok()));
+
+    let evidence = projection.evidence_refs.get(&focused.id).unwrap();
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].label, "service-card");
+
+    let reason = projection
+        .rank_reasons
+        .iter()
+        .find(|reason| reason.pane_id == focused.id)
         .unwrap();
-    assert_eq!(focused.status, CardStatus::Verified);
-    assert_eq!(focused.why_now, attention[0].why_now);
-    assert!(focused
-        .drilldowns
-        .iter()
-        .any(|item| item.kind == DrilldownKind::Evidence));
-    assert!(focused
-        .drilldowns
-        .iter()
-        .any(|item| item.kind == DrilldownKind::Lease));
-    assert!(focused
-        .drilldowns
-        .iter()
-        .any(|item| item.kind == DrilldownKind::Approval));
-    assert!(focused
-        .actions
-        .iter()
-        .any(|action| action.safety_class == SafetyClass::ReadOnly));
-    assert!(focused
-        .actions
-        .iter()
-        .any(|action| action.safety_class == SafetyClass::ApprovalRequired));
-    assert!(focused
-        .actions
-        .iter()
-        .any(|action| action.safety_class == SafetyClass::BoundedAuto));
+    assert!(reason.reason.factors.approval_expiry_pressure > 0.0);
+    assert!(reason.reason.factors.lease_pressure > 0.0);
+    assert!(reason.reason.explanation.contains("Bridge write lease"));
+}
+
+#[test]
+fn failed_work_without_path_gets_manual_only_action() {
+    let failed_id = uuid("99999999-9999-4999-8999-999999999993");
+    let reads = NowReads {
+        work_orders: vec![work_order(
+            failed_id,
+            "Recover failed queue item",
+            WorkOrderStatus::Failed,
+        )],
+        ..NowReads::default()
+    };
+
+    let projection = queue_blockers_projection(&reads, fixed_time());
+    let failed = pane(&projection, failed_id);
+    let actions = projection.prepared_actions.get(&failed.id).unwrap();
+
+    assert_eq!(failed.status, PaneStatus::Active);
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].safety, ActionSafetyClass::ManualOnly);
+    assert!(!actions[0].ready);
 }
 
 #[test]
@@ -107,8 +141,8 @@ fn projection_refreshes_when_event_watermark_advances() {
     let refreshed = projection.refresh_if_stale_at(fixed_time()).unwrap();
 
     assert_eq!(refreshed.generation, 1);
-    assert_eq!(refreshed.snapshot.generation, 1);
-    assert!(refreshed.scenes.contains_key(queue_blockers::KEY));
+    assert_eq!(refreshed.captured_at, fixed_time());
+    assert_eq!(refreshed.default_pane, queue_blockers::KEY);
 }
 
 trait WorkOrderFixture {
@@ -143,6 +177,15 @@ fn work_order(id: Uuid, subject: &str, status: WorkOrderStatus) -> WorkOrder {
         created_at: fixed_time() - Duration::minutes(30),
         updated_at: fixed_time() - Duration::minutes(5),
     }
+}
+
+fn pane(projection: &QueueBlockersProjection, work_order_id: Uuid) -> &jmcp_domain::PaneVm {
+    let pane_id = queue_blockers::pane_id(work_order_id);
+    projection
+        .panes
+        .iter()
+        .find(|pane| pane.id == pane_id)
+        .unwrap()
 }
 
 fn fixed_time() -> chrono::DateTime<Utc> {

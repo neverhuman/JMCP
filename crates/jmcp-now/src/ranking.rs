@@ -1,33 +1,39 @@
 use chrono::{DateTime, Utc};
+use jmcp_domain::{DeckRankFactors, DeckRankReason};
 
-use crate::contract::{RankFactorKind, RankFactors, RankReason};
-
-pub const RISK_WEIGHT: f64 = 0.30;
-pub const ACTIONABILITY_WEIGHT: f64 = 0.20;
-pub const FRESHNESS_WEIGHT: f64 = 0.15;
-pub const BLAST_RADIUS_WEIGHT: f64 = 0.20;
-pub const LEASE_PRESSURE_WEIGHT: f64 = 0.10;
-pub const USER_RELEVANCE_WEIGHT: f64 = 0.05;
+pub const RISK_WEIGHT: f32 = 0.25;
+pub const BLOCKEDNESS_WEIGHT: f32 = 0.20;
+pub const APPROVAL_EXPIRY_PRESSURE_WEIGHT: f32 = 0.10;
+pub const LEASE_PRESSURE_WEIGHT: f32 = 0.10;
+pub const ADAPTER_DEGRADED_WEIGHT: f32 = 0.05;
+pub const EVIDENCE_GAP_WEIGHT: f32 = 0.10;
+pub const USER_QUERY_RELEVANCE_WEIGHT: f32 = 0.05;
+pub const FRESHNESS_WEIGHT: f32 = 0.05;
+pub const DOWNSTREAM_BLAST_RADIUS_WEIGHT: f32 = 0.10;
 
 const FRESHNESS_WINDOW_MINUTES: i64 = 60;
 const LEASE_PRESSURE_WINDOW_MINUTES: i64 = 60;
+const APPROVAL_EXPIRY_WINDOW_MINUTES: i64 = 60;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RankInput {
     pub id: String,
     pub subject: String,
-    pub risk: f64,
-    pub actionability: f64,
-    pub updated_at: DateTime<Utc>,
-    pub blast_radius: f64,
+    pub risk: f32,
+    pub blockedness: f32,
+    pub approval_expires_at: Option<DateTime<Utc>>,
     pub lease_expires_at: Option<DateTime<Utc>>,
-    pub user_relevance: f64,
+    pub adapter_degraded_weight: f32,
+    pub evidence_gap_weight: f32,
+    pub user_query_relevance: f32,
+    pub updated_at: DateTime<Utc>,
+    pub downstream_blast_radius: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RankedInput {
     pub input: RankInput,
-    pub reason: RankReason,
+    pub reason: DeckRankReason,
 }
 
 pub fn rank_inputs(inputs: Vec<RankInput>, now: DateTime<Utc>) -> Vec<RankedInput> {
@@ -48,43 +54,63 @@ pub fn rank_inputs(inputs: Vec<RankInput>, now: DateTime<Utc>) -> Vec<RankedInpu
     ranked
 }
 
-pub fn rank_reason(input: &RankInput, now: DateTime<Utc>) -> RankReason {
-    let factors = RankFactors {
+pub fn rank_reason(input: &RankInput, now: DateTime<Utc>) -> DeckRankReason {
+    let factors = DeckRankFactors {
         risk: normalized(input.risk),
-        actionability: normalized(input.actionability),
-        freshness: freshness_factor(input.updated_at, now),
-        blast_radius: normalized(input.blast_radius),
+        blockedness: normalized(input.blockedness),
+        approval_expiry_pressure: approval_expiry_pressure_factor(input.approval_expires_at, now),
         lease_pressure: lease_pressure_factor(input.lease_expires_at, now),
-        user_relevance: normalized(input.user_relevance),
+        adapter_degraded_weight: normalized(input.adapter_degraded_weight),
+        evidence_gap_weight: normalized(input.evidence_gap_weight),
+        user_query_relevance: normalized(input.user_query_relevance),
+        freshness: freshness_factor(input.updated_at, now),
+        downstream_blast_radius: normalized(input.downstream_blast_radius),
     };
-    let score = weighted_score(factors);
-    let dominant_factor = dominant_factor(factors);
-    RankReason {
+    let score = weighted_score(&factors);
+    let dominant_factor = dominant_factor(&factors);
+    DeckRankReason {
         score,
         factors,
-        summary: summary(&input.subject, dominant_factor, score),
-        dominant_factor,
+        explanation: explanation(&input.subject, dominant_factor, score),
     }
 }
 
-pub fn weighted_score(factors: RankFactors) -> f64 {
+pub fn weighted_score(factors: &DeckRankFactors) -> f32 {
     RISK_WEIGHT * factors.risk
-        + ACTIONABILITY_WEIGHT * factors.actionability
-        + FRESHNESS_WEIGHT * factors.freshness
-        + BLAST_RADIUS_WEIGHT * factors.blast_radius
+        + BLOCKEDNESS_WEIGHT * factors.blockedness
+        + APPROVAL_EXPIRY_PRESSURE_WEIGHT * factors.approval_expiry_pressure
         + LEASE_PRESSURE_WEIGHT * factors.lease_pressure
-        + USER_RELEVANCE_WEIGHT * factors.user_relevance
+        + ADAPTER_DEGRADED_WEIGHT * factors.adapter_degraded_weight
+        + EVIDENCE_GAP_WEIGHT * factors.evidence_gap_weight
+        + USER_QUERY_RELEVANCE_WEIGHT * factors.user_query_relevance
+        + FRESHNESS_WEIGHT * factors.freshness
+        + DOWNSTREAM_BLAST_RADIUS_WEIGHT * factors.downstream_blast_radius
 }
 
-pub fn freshness_factor(updated_at: DateTime<Utc>, now: DateTime<Utc>) -> f64 {
+pub fn freshness_factor(updated_at: DateTime<Utc>, now: DateTime<Utc>) -> f32 {
     let age = now.signed_duration_since(updated_at);
     if age.num_seconds() <= 0 {
         return 1.0;
     }
-    normalized(1.0 - age.num_minutes() as f64 / FRESHNESS_WINDOW_MINUTES as f64)
+    normalized(1.0 - age.num_minutes() as f32 / FRESHNESS_WINDOW_MINUTES as f32)
 }
 
-pub fn lease_pressure_factor(expires_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> f64 {
+pub fn lease_pressure_factor(expires_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> f32 {
+    expiry_pressure_factor(expires_at, now, LEASE_PRESSURE_WINDOW_MINUTES)
+}
+
+pub fn approval_expiry_pressure_factor(
+    expires_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> f32 {
+    expiry_pressure_factor(expires_at, now, APPROVAL_EXPIRY_WINDOW_MINUTES)
+}
+
+fn expiry_pressure_factor(
+    expires_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    window_minutes: i64,
+) -> f32 {
     let Some(expires_at) = expires_at else {
         return 0.0;
     };
@@ -92,52 +118,62 @@ pub fn lease_pressure_factor(expires_at: Option<DateTime<Utc>>, now: DateTime<Ut
     if remaining.num_seconds() <= 0 {
         return 1.0;
     }
-    normalized(1.0 - remaining.num_minutes() as f64 / LEASE_PRESSURE_WINDOW_MINUTES as f64)
+    normalized(1.0 - remaining.num_minutes() as f32 / window_minutes as f32)
 }
 
-fn dominant_factor(factors: RankFactors) -> RankFactorKind {
+fn dominant_factor(factors: &DeckRankFactors) -> &'static str {
     [
-        (RankFactorKind::Risk, RISK_WEIGHT * factors.risk),
+        ("risk", RISK_WEIGHT * factors.risk),
+        ("blockedness", BLOCKEDNESS_WEIGHT * factors.blockedness),
         (
-            RankFactorKind::Actionability,
-            ACTIONABILITY_WEIGHT * factors.actionability,
+            "approval expiry pressure",
+            APPROVAL_EXPIRY_PRESSURE_WEIGHT * factors.approval_expiry_pressure,
         ),
         (
-            RankFactorKind::Freshness,
-            FRESHNESS_WEIGHT * factors.freshness,
-        ),
-        (
-            RankFactorKind::BlastRadius,
-            BLAST_RADIUS_WEIGHT * factors.blast_radius,
-        ),
-        (
-            RankFactorKind::LeasePressure,
+            "lease pressure",
             LEASE_PRESSURE_WEIGHT * factors.lease_pressure,
         ),
         (
-            RankFactorKind::UserRelevance,
-            USER_RELEVANCE_WEIGHT * factors.user_relevance,
+            "adapter degradation",
+            ADAPTER_DEGRADED_WEIGHT * factors.adapter_degraded_weight,
+        ),
+        (
+            "evidence gap",
+            EVIDENCE_GAP_WEIGHT * factors.evidence_gap_weight,
+        ),
+        (
+            "user query relevance",
+            USER_QUERY_RELEVANCE_WEIGHT * factors.user_query_relevance,
+        ),
+        ("freshness", FRESHNESS_WEIGHT * factors.freshness),
+        (
+            "downstream blast radius",
+            DOWNSTREAM_BLAST_RADIUS_WEIGHT * factors.downstream_blast_radius,
         ),
     ]
     .into_iter()
     .max_by(|left, right| left.1.total_cmp(&right.1))
     .map(|(factor, _)| factor)
-    .unwrap_or(RankFactorKind::Risk)
+    .unwrap_or("risk")
 }
 
-fn summary(subject: &str, dominant_factor: RankFactorKind, score: f64) -> String {
+fn explanation(subject: &str, dominant_factor: &str, score: f32) -> String {
     let driver = match dominant_factor {
-        RankFactorKind::Risk => "risk is highest",
-        RankFactorKind::Actionability => "there is a ready next step",
-        RankFactorKind::Freshness => "the signal is recent",
-        RankFactorKind::BlastRadius => "downstream impact is high",
-        RankFactorKind::LeasePressure => "the lease window is tight",
-        RankFactorKind::UserRelevance => "it matches the current question",
+        "risk" => "risk is highest",
+        "blockedness" => "queue progress is blocked",
+        "approval expiry pressure" => "the approval window is tight",
+        "lease pressure" => "the lease window is tight",
+        "adapter degradation" => "adapter health is degraded",
+        "evidence gap" => "evidence is missing",
+        "user query relevance" => "it matches the current question",
+        "freshness" => "the signal is recent",
+        "downstream blast radius" => "downstream impact is high",
+        _ => "risk is highest",
     };
     format!("{subject} ranks here because {driver}; score {score:.2}.")
 }
 
-fn normalized(value: f64) -> f64 {
+fn normalized(value: f32) -> f32 {
     if value.is_nan() {
         return 0.0;
     }
@@ -162,18 +198,29 @@ mod tests {
             id: "b".to_owned(),
             subject: "Queue item".to_owned(),
             risk: 1.0,
-            actionability: 0.5,
-            updated_at: now() - Duration::minutes(30),
-            blast_radius: 0.25,
+            blockedness: 0.5,
+            approval_expires_at: Some(now() + Duration::minutes(15)),
             lease_expires_at: Some(now() + Duration::minutes(30)),
-            user_relevance: 0.8,
+            adapter_degraded_weight: 0.2,
+            evidence_gap_weight: 0.6,
+            user_query_relevance: 0.8,
+            updated_at: now() - Duration::minutes(30),
+            downstream_blast_radius: 0.25,
         };
 
         let reason = rank_reason(&input, now());
 
-        let expected = 0.30 * 1.0 + 0.20 * 0.5 + 0.15 * 0.5 + 0.20 * 0.25 + 0.10 * 0.5 + 0.05 * 0.8;
-        assert_eq!(reason.score, expected);
-        assert_eq!(reason.dominant_factor, RankFactorKind::Risk);
+        let expected = 0.25 * 1.0
+            + 0.20 * 0.5
+            + 0.10 * 0.75
+            + 0.10 * 0.5
+            + 0.05 * 0.2
+            + 0.10 * 0.6
+            + 0.05 * 0.8
+            + 0.05 * 0.5
+            + 0.10 * 0.25;
+        assert!((reason.score - expected).abs() < f32::EPSILON);
+        assert!(reason.explanation.contains("risk is highest"));
     }
 
     #[test]
@@ -183,31 +230,40 @@ mod tests {
                 id: "b".to_owned(),
                 subject: "B".to_owned(),
                 risk: 0.5,
-                actionability: 0.5,
-                updated_at: now(),
-                blast_radius: 0.5,
+                blockedness: 0.5,
+                approval_expires_at: None,
                 lease_expires_at: None,
-                user_relevance: 0.5,
+                adapter_degraded_weight: 0.5,
+                evidence_gap_weight: 0.5,
+                user_query_relevance: 0.5,
+                updated_at: now(),
+                downstream_blast_radius: 0.5,
             },
             RankInput {
                 id: "a".to_owned(),
                 subject: "A".to_owned(),
                 risk: 0.5,
-                actionability: 0.5,
-                updated_at: now(),
-                blast_radius: 0.5,
+                blockedness: 0.5,
+                approval_expires_at: None,
                 lease_expires_at: None,
-                user_relevance: 0.5,
+                adapter_degraded_weight: 0.5,
+                evidence_gap_weight: 0.5,
+                user_query_relevance: 0.5,
+                updated_at: now(),
+                downstream_blast_radius: 0.5,
             },
             RankInput {
                 id: "c".to_owned(),
                 subject: "C".to_owned(),
                 risk: 1.0,
-                actionability: 1.0,
-                updated_at: now(),
-                blast_radius: 1.0,
+                blockedness: 1.0,
+                approval_expires_at: None,
                 lease_expires_at: None,
-                user_relevance: 1.0,
+                adapter_degraded_weight: 1.0,
+                evidence_gap_weight: 1.0,
+                user_query_relevance: 1.0,
+                updated_at: now(),
+                downstream_blast_radius: 1.0,
             },
         ];
 
