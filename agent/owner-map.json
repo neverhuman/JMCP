@@ -15,6 +15,7 @@
     ".npmrc": "tools",
     "gitleaks.toml": "ops",
     "AGENT_CHAT.md": "agent",
+    "MOCK_TEST_PROOF.md": "agent",
     "AGENT_WORK_PLAN.md": "agent",
     "AGENTS.md": "agent",
     "CLAUDE.md": "agent",

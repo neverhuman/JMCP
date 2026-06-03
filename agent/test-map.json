@@ -64,6 +64,10 @@
       "command": "just score",
       "purpose": "verify governance chat remains routed"
     },
+    "MOCK_TEST_PROOF.md": {
+      "command": "just fast",
+      "purpose": "verify the mock test proof stays routed"
+    },
     "AGENT_WORK_PLAN.md": {
       "command": "just score",
       "purpose": "verify the work plan remains routed"
