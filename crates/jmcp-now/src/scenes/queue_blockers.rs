@@ -1,28 +1,44 @@
-use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
-use crate::{
-    contract::{
-        Accent, Card, CardKind, CardStatus, Counter, CounterValue, DrilldownKind, DrilldownRef,
-        NowSnapshot, PaneKind, PanePreview, PaneStatus, PreparedAction, RiskBand, SafetyClass,
-        Scene, SceneLayout, SceneMode,
-    },
-    ranking::{rank_inputs, RankInput},
-    reads::NowReads,
+use chrono::{DateTime, Utc};
+use jmcp_domain::{
+    ActionSafetyClass, ApprovalChallenge, AttentionPacket, CardLod, CounterValue, DeckRankReason,
+    IncidentSeverity, JituxEvidenceRef, Lease, PaneCounter, PaneKind, PanePreview, PaneRankReason,
+    PaneVm, PreparedAction, PreparedTab, WorkOrder, WorkOrderStatus,
+};
+
+mod actions;
+mod signals;
+
+use crate::{ranking::rank_inputs, reads::NowReads};
+use actions::{actions_for, evidence_for, safety_chip};
+use signals::{
+    attention_for, incident_chip, incident_severity_for, lease_for, open_challenge_for, pane_risk,
+    pane_status, rank_input, status_chip,
 };
 
 pub const KEY: &str = "queue_blockers";
+pub const TITLE: &str = "What's blocking the queue?";
 
-pub fn compose(reads: &NowReads, generation: i64, captured_at: DateTime<Utc>) -> Scene {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct QueueBlockersProjection {
+    pub panes: Vec<PaneVm>,
+    pub rank_reasons: Vec<PaneRankReason>,
+    pub prepared_actions: HashMap<String, Vec<PreparedAction>>,
+    pub evidence_refs: HashMap<String, Vec<JituxEvidenceRef>>,
+}
+
+pub fn compose(reads: &NowReads, now: DateTime<Utc>) -> QueueBlockersProjection {
     let candidates = reads
         .work_orders
         .iter()
         .filter(|work_order| {
             matches!(
                 work_order.status,
-                jmcp_domain::WorkOrderStatus::Submitted
-                    | jmcp_domain::WorkOrderStatus::Leased
-                    | jmcp_domain::WorkOrderStatus::AwaitingApproval
-                    | jmcp_domain::WorkOrderStatus::Failed
+                WorkOrderStatus::Submitted
+                    | WorkOrderStatus::Leased
+                    | WorkOrderStatus::AwaitingApproval
+                    | WorkOrderStatus::Failed
             )
         })
         .collect::<Vec<_>>();
@@ -31,372 +47,256 @@ pub fn compose(reads: &NowReads, generation: i64, captured_at: DateTime<Utc>) ->
         .iter()
         .map(|work_order| rank_input(reads, work_order))
         .collect::<Vec<_>>();
-    let ranked = rank_inputs(inputs, captured_at);
+    let ranked = rank_inputs(inputs, now);
+    let focus_input_id = ranked.first().map(|ranked| ranked.input.id.clone());
 
-    let cards = ranked
-        .into_iter()
-        .filter_map(|ranked| {
-            let work_order = candidates
-                .iter()
-                .copied()
-                .find(|work_order| work_order.id.to_string() == ranked.input.id)?;
-            Some(card(reads, work_order, ranked.reason))
-        })
-        .collect::<Vec<_>>();
+    let mut panes = Vec::new();
+    let mut rank_reasons = Vec::new();
+    let mut prepared_actions = HashMap::new();
+    let mut evidence_refs = HashMap::new();
 
-    Scene {
-        key: KEY.to_owned(),
-        kind: PaneKind::Queue,
-        mode: SceneMode::Focus,
-        accent: Accent::Purple,
-        title: "What's blocking the queue?".to_owned(),
-        layout: SceneLayout::Stack,
-        status: PaneStatus::Active,
-        generation,
-        captured_at,
-        cards,
-        narration_hint:
-            "Lead with the top blocker, then name the next approval, lease, or evidence step."
-                .to_owned(),
-    }
-}
+    for ranked in ranked {
+        let Some(work_order) = candidates
+            .iter()
+            .copied()
+            .find(|work_order| work_order.id.to_string() == ranked.input.id)
+        else {
+            continue;
+        };
+        let pane_id = pane_id(work_order.id);
+        let actions = actions_for(reads, work_order);
+        let evidence = evidence_for(work_order);
+        let is_focus = focus_input_id.as_deref() == Some(ranked.input.id.as_str());
+        let pane = pane(
+            reads,
+            work_order,
+            &ranked.reason,
+            now,
+            is_focus,
+            &actions,
+            &evidence,
+        );
 
-pub fn snapshot(scene: &Scene, generation: i64, captured_at: DateTime<Utc>) -> NowSnapshot {
-    let high_risk = scene
-        .cards
-        .iter()
-        .filter(|card| matches!(card.risk, RiskBand::High))
-        .count();
-    let top_score = scene.cards.first().map(|card| card.rank).unwrap_or(0.0);
-    NowSnapshot {
-        generation,
-        captured_at,
-        default_pane: KEY.to_owned(),
-        deck: vec![PanePreview {
-            id: KEY.to_owned(),
-            kind: PaneKind::Queue,
-            title: scene.title.clone(),
-            headline: match scene.cards.first() {
-                Some(card) => card.title.clone(),
-                None => "Queue has no submitted, leased, approval, or failed blockers".to_owned(),
-            },
-            chips: vec![
-                format!("{} blockers", scene.cards.len()),
-                format!("{high_risk} high risk"),
-            ],
-            counters: vec![
-                Counter {
-                    label: "cards".to_owned(),
-                    value: CounterValue::Number(scene.cards.len() as f64),
-                },
-                Counter {
-                    label: "topScore".to_owned(),
-                    value: CounterValue::Number(top_score),
-                },
-            ],
-            sparkline: None,
-            rank: top_score,
-            focus_score: top_score,
-            confidence: if scene.cards.is_empty() { 0.5 } else { 0.86 },
-            severity: if high_risk > 0 {
-                RiskBand::High
-            } else {
-                RiskBand::Medium
-            },
-            status: PaneStatus::Active,
-            predicted_next: vec![
-                "approval".to_owned(),
-                "replay".to_owned(),
-                "evidence".to_owned(),
-            ],
-        }],
-    }
-}
-
-fn card(reads: &NowReads, work_order: &jmcp_domain::WorkOrder, reason: crate::RankReason) -> Card {
-    let attention = attention_for(reads, work_order.id);
-    let lease = reads
-        .leases
-        .iter()
-        .find(|lease| lease.work_order_id == work_order.id);
-    let challenge = open_challenge_for(reads, work_order.id);
-    let evidence_refs = evidence_refs(work_order);
-    let mut drilldowns = evidence_refs.clone();
-    if let Some(lease) = lease {
-        drilldowns.push(DrilldownRef {
-            id: format!("lease:{}", lease.work_order_id),
-            label: format!("Lease held by {}", lease.holder),
-            kind: DrilldownKind::Lease,
-            target: format!("leases/{}", lease.work_order_id),
+        rank_reasons.push(PaneRankReason {
+            pane_id: pane_id.clone(),
+            reason: ranked.reason,
         });
-    }
-    if let Some(challenge) = challenge {
-        drilldowns.push(DrilldownRef {
-            id: format!("approval:{}", challenge.id),
-            label: format!("Approval from {}", challenge.approver),
-            kind: DrilldownKind::Approval,
-            target: format!("approval-challenges/{}", challenge.id),
-        });
+        prepared_actions.insert(pane_id.clone(), actions);
+        evidence_refs.insert(pane_id, evidence);
+        panes.push(pane);
     }
 
-    Card {
-        id: work_order.id.to_string(),
-        kind: CardKind::QueueBlocker,
-        title: work_order.subject.clone(),
-        status: if work_order.evidence.is_empty() {
-            CardStatus::Ranked
-        } else {
-            CardStatus::Verified
-        },
-        rank: reason.score,
-        risk: risk_band(reason.factors.risk),
-        why_now: why_now(work_order, attention, lease),
-        rank_reason: reason,
+    QueueBlockersProjection {
+        panes,
+        rank_reasons,
+        prepared_actions,
         evidence_refs,
-        drilldowns,
-        actions: actions_for(reads, work_order, challenge),
     }
 }
 
-fn rank_input(reads: &NowReads, work_order: &jmcp_domain::WorkOrder) -> RankInput {
+pub fn panes(reads: &NowReads, now: DateTime<Utc>) -> Vec<PaneVm> {
+    compose(reads, now).panes
+}
+
+pub fn pane_id(work_order_id: impl std::fmt::Display) -> String {
+    format!("{KEY}:{work_order_id}")
+}
+
+fn pane(
+    reads: &NowReads,
+    work_order: &WorkOrder,
+    reason: &DeckRankReason,
+    now: DateTime<Utc>,
+    is_focus: bool,
+    actions: &[PreparedAction],
+    evidence: &[JituxEvidenceRef],
+) -> PaneVm {
     let attention = attention_for(reads, work_order.id);
-    let lease = reads
-        .leases
-        .iter()
-        .find(|lease| lease.work_order_id == work_order.id);
+    let lease = lease_for(reads, work_order.id);
     let challenge = open_challenge_for(reads, work_order.id);
-    RankInput {
-        id: work_order.id.to_string(),
-        subject: work_order.subject.clone(),
-        risk: risk_factor(reads, work_order, attention),
-        actionability: actionability_factor(work_order, challenge),
-        updated_at: work_order.updated_at,
-        blast_radius: blast_radius_factor(reads, work_order),
-        lease_expires_at: lease.map(|lease| lease.expires_at),
-        user_relevance: user_relevance_factor(work_order, attention),
-    }
-}
+    let incident = incident_severity_for(reads, work_order);
 
-fn attention_for(
-    reads: &NowReads,
-    work_order_id: uuid::Uuid,
-) -> Option<&jmcp_domain::AttentionPacket> {
-    reads
-        .attention_packets
-        .iter()
-        .filter(|packet| packet.work_order_id == Some(work_order_id))
-        .max_by_key(|packet| packet.updated_at)
-}
-
-fn open_challenge_for(
-    reads: &NowReads,
-    work_order_id: uuid::Uuid,
-) -> Option<&jmcp_domain::ApprovalChallenge> {
-    reads.approval_challenges.iter().find(|challenge| {
-        challenge.work_order_id == work_order_id
-            && matches!(
-                challenge.state,
-                jmcp_domain::ApprovalChallengeState::Pending
-            )
-    })
-}
-
-fn evidence_refs(work_order: &jmcp_domain::WorkOrder) -> Vec<DrilldownRef> {
-    work_order
-        .evidence
-        .iter()
-        .enumerate()
-        .map(|(index, evidence)| DrilldownRef {
-            id: format!("evidence:{}:{index}", work_order.id),
-            label: evidence.kind.clone(),
-            kind: DrilldownKind::Evidence,
-            target: evidence.uri.clone(),
-        })
-        .collect()
-}
-
-fn actions_for(
-    reads: &NowReads,
-    work_order: &jmcp_domain::WorkOrder,
-    challenge: Option<&jmcp_domain::ApprovalChallenge>,
-) -> Vec<PreparedAction> {
-    let mut actions = Vec::new();
-    if !work_order.evidence.is_empty() {
-        actions.push(PreparedAction {
-            id: format!("read-evidence:{}", work_order.id),
-            label: "Open evidence".to_owned(),
-            safety_class: SafetyClass::ReadOnly,
-            ready: true,
-            reason: "Evidence reads do not mutate JMCP state.".to_owned(),
-            target: format!("work-orders/{}/evidence", work_order.id),
-            method: crate::ActionMethod::Get,
-        });
+    PaneVm {
+        id: pane_id(work_order.id),
+        kind: PaneKind::Queue,
+        title: work_order.subject.clone(),
+        rank: reason.score,
+        risk: pane_risk(reason.factors.risk),
+        status: pane_status(work_order.status),
+        lod: if is_focus {
+            CardLod::Focus
+        } else {
+            CardLod::Preview
+        },
+        confidence: confidence(attention, lease, challenge, evidence),
+        freshness_ms: freshness_ms(work_order.updated_at, now),
+        preview: PanePreview {
+            headline: why_now(work_order, attention, lease),
+            chips: chips(work_order, lease, challenge, incident, actions, evidence),
+            counters: counters(work_order, lease, challenge, actions, evidence, now),
+        },
+        prepared_tabs: prepared_tabs(lease, challenge, incident, actions, evidence),
     }
-    if let Some(challenge) = challenge {
-        actions.push(PreparedAction {
-            id: format!("approval:{}", challenge.id),
-            label: "Review approval".to_owned(),
-            safety_class: SafetyClass::ApprovalRequired,
-            ready: false,
-            reason: "An open approval challenge controls the next mutating step.".to_owned(),
-            target: format!("approval-challenges/{}", challenge.id),
-            method: crate::ActionMethod::Post,
-        });
-    }
-    if let Some(action) = reads
-        .autonomous_actions
-        .iter()
-        .find(|action| !action.safety.live)
-    {
-        actions.push(PreparedAction {
-            id: format!("bounded-auto:{}:{}", work_order.id, action.id),
-            label: action.title.clone(),
-            safety_class: SafetyClass::BoundedAuto,
-            ready: true,
-            reason: "The autonomous action manifest is evidence-oriented and live=false."
-                .to_owned(),
-            target: format!("autonomous-actions/{}", action.id),
-            method: crate::ActionMethod::Post,
-        });
-    }
-    if matches!(work_order.status, jmcp_domain::WorkOrderStatus::Failed) || actions.is_empty() {
-        actions.push(PreparedAction {
-            id: format!("manual:{}", work_order.id),
-            label: "Manual review".to_owned(),
-            safety_class: SafetyClass::ManualOnly,
-            ready: false,
-            reason: "No governed automatic path is ready for this blocker.".to_owned(),
-            target: format!("work-orders/{}", work_order.id),
-            method: crate::ActionMethod::Get,
-        });
-    }
-    actions
 }
 
 fn why_now(
-    work_order: &jmcp_domain::WorkOrder,
-    attention: Option<&jmcp_domain::AttentionPacket>,
-    lease: Option<&jmcp_domain::Lease>,
+    work_order: &WorkOrder,
+    attention: Option<&AttentionPacket>,
+    lease: Option<&Lease>,
 ) -> String {
     if let Some(attention) = attention {
         return attention.why_now.clone();
     }
     match work_order.status {
-        jmcp_domain::WorkOrderStatus::Submitted => {
+        WorkOrderStatus::Submitted => {
             "Submitted work order is waiting for a lease or approval path.".to_owned()
         }
-        jmcp_domain::WorkOrderStatus::Leased => match lease {
+        WorkOrderStatus::Leased => match lease {
             Some(lease) => format!(
                 "Lease held by {} needs completion or renewal.",
                 lease.holder
             ),
             None => "Leased work order has no visible lease record.".to_owned(),
         },
-        jmcp_domain::WorkOrderStatus::AwaitingApproval => {
+        WorkOrderStatus::AwaitingApproval => {
             "Work order is paused on approval before it can continue.".to_owned()
         }
-        jmcp_domain::WorkOrderStatus::Failed => {
+        WorkOrderStatus::Failed => {
             "Failed work order needs manual recovery or fresh evidence.".to_owned()
         }
-        _ => "Work order is visible in the queue blocker scene.".to_owned(),
+        _ => "Work order is visible in the queue blocker scene template.".to_owned(),
     }
 }
 
-fn risk_factor(
-    reads: &NowReads,
-    work_order: &jmcp_domain::WorkOrder,
-    attention: Option<&jmcp_domain::AttentionPacket>,
-) -> f64 {
-    let status: f64 = match work_order.status {
-        jmcp_domain::WorkOrderStatus::Failed => 0.9,
-        jmcp_domain::WorkOrderStatus::AwaitingApproval => 0.75,
-        jmcp_domain::WorkOrderStatus::Leased => 0.55,
-        jmcp_domain::WorkOrderStatus::Submitted => 0.45,
-        _ => 0.2,
-    };
-    let attention = attention
-        .map(|packet| match packet.level {
-            jmcp_domain::AttentionLevel::Page => 1.0,
-            jmcp_domain::AttentionLevel::Warn => 0.7,
-            jmcp_domain::AttentionLevel::Info => 0.35,
-        })
-        .unwrap_or(0.0);
-    let incident = reads
-        .incidents
-        .iter()
-        .filter(|incident| incident.related_work_orders.contains(&work_order.id))
-        .map(|incident| match incident.severity {
-            jmcp_domain::IncidentSeverity::Critical => 1.0,
-            jmcp_domain::IncidentSeverity::Major => 0.85,
-            jmcp_domain::IncidentSeverity::Warning => 0.6,
-            jmcp_domain::IncidentSeverity::Info => 0.3,
-        })
-        .fold(0.0, f64::max);
-    status.max(attention).max(incident)
-}
-
-fn actionability_factor(
-    work_order: &jmcp_domain::WorkOrder,
-    challenge: Option<&jmcp_domain::ApprovalChallenge>,
-) -> f64 {
+fn chips(
+    work_order: &WorkOrder,
+    lease: Option<&Lease>,
+    challenge: Option<&ApprovalChallenge>,
+    incident: Option<IncidentSeverity>,
+    actions: &[PreparedAction],
+    evidence: &[JituxEvidenceRef],
+) -> Vec<String> {
+    let mut chips = vec![status_chip(work_order.status).to_owned()];
+    if lease.is_some() {
+        chips.push("lease".to_owned());
+    }
     if challenge.is_some() {
-        return 0.9;
+        chips.push("approval_required".to_owned());
     }
-    match work_order.status {
-        jmcp_domain::WorkOrderStatus::Submitted => 0.7,
-        jmcp_domain::WorkOrderStatus::Leased => 0.65,
-        jmcp_domain::WorkOrderStatus::AwaitingApproval => 0.8,
-        jmcp_domain::WorkOrderStatus::Failed => 0.35,
-        _ => 0.2,
-    }
-}
-
-fn blast_radius_factor(reads: &NowReads, work_order: &jmcp_domain::WorkOrder) -> f64 {
-    let incident = reads
-        .incidents
-        .iter()
-        .filter(|incident| incident.related_work_orders.contains(&work_order.id))
-        .map(|incident| match incident.severity {
-            jmcp_domain::IncidentSeverity::Critical => 1.0,
-            jmcp_domain::IncidentSeverity::Major => 0.85,
-            jmcp_domain::IncidentSeverity::Warning => 0.55,
-            jmcp_domain::IncidentSeverity::Info => 0.25,
-        })
-        .fold(0.0, f64::max);
-    let status: f64 = match work_order.status {
-        jmcp_domain::WorkOrderStatus::Failed => 0.75,
-        jmcp_domain::WorkOrderStatus::AwaitingApproval => 0.7,
-        jmcp_domain::WorkOrderStatus::Leased => 0.55,
-        jmcp_domain::WorkOrderStatus::Submitted => 0.4,
-        _ => 0.2,
-    };
-    status.max(incident)
-}
-
-fn user_relevance_factor(
-    work_order: &jmcp_domain::WorkOrder,
-    attention: Option<&jmcp_domain::AttentionPacket>,
-) -> f64 {
-    if matches!(
-        attention.map(|packet| packet.level),
-        Some(jmcp_domain::AttentionLevel::Page)
-    ) {
-        return 1.0;
-    }
-    match work_order.status {
-        jmcp_domain::WorkOrderStatus::AwaitingApproval => 0.9,
-        jmcp_domain::WorkOrderStatus::Failed => 0.8,
-        jmcp_domain::WorkOrderStatus::Submitted | jmcp_domain::WorkOrderStatus::Leased => 0.7,
-        _ => 0.4,
-    }
-}
-
-fn risk_band(risk: f64) -> RiskBand {
-    if risk >= 0.75 {
-        RiskBand::High
-    } else if risk >= 0.45 {
-        RiskBand::Medium
+    if !evidence.is_empty() {
+        chips.push("evidence".to_owned());
     } else {
-        RiskBand::Low
+        chips.push("evidence_gap".to_owned());
     }
+    if let Some(incident) = incident {
+        chips.push(format!("incident_{}", incident_chip(incident)));
+    }
+    for safety in [
+        ActionSafetyClass::ReadOnly,
+        ActionSafetyClass::BoundedAuto,
+        ActionSafetyClass::ApprovalRequired,
+        ActionSafetyClass::ManualOnly,
+    ] {
+        if actions.iter().any(|action| action.safety == safety) {
+            chips.push(safety_chip(safety).to_owned());
+        }
+    }
+    chips
+}
+
+fn counters(
+    work_order: &WorkOrder,
+    lease: Option<&Lease>,
+    challenge: Option<&ApprovalChallenge>,
+    actions: &[PreparedAction],
+    evidence: &[JituxEvidenceRef],
+    now: DateTime<Utc>,
+) -> Vec<PaneCounter> {
+    let mut counters = vec![
+        PaneCounter {
+            label: "evidence".to_owned(),
+            value: CounterValue::Number(evidence.len() as i64),
+        },
+        PaneCounter {
+            label: "actions".to_owned(),
+            value: CounterValue::Number(actions.len() as i64),
+        },
+        PaneCounter {
+            label: "status".to_owned(),
+            value: CounterValue::Text(status_chip(work_order.status).to_owned()),
+        },
+    ];
+    if let Some(lease) = lease {
+        counters.push(PaneCounter {
+            label: "leaseMins".to_owned(),
+            value: CounterValue::Number(minutes_until(lease.expires_at, now)),
+        });
+    }
+    if let Some(challenge) = challenge {
+        counters.push(PaneCounter {
+            label: "approvalMins".to_owned(),
+            value: CounterValue::Number(minutes_until(challenge.expires_at, now)),
+        });
+    }
+    counters
+}
+
+fn prepared_tabs(
+    lease: Option<&Lease>,
+    challenge: Option<&ApprovalChallenge>,
+    incident: Option<IncidentSeverity>,
+    actions: &[PreparedAction],
+    evidence: &[JituxEvidenceRef],
+) -> Vec<PreparedTab> {
+    let mut tabs = Vec::new();
+    if !evidence.is_empty() {
+        push_tab(&mut tabs, PreparedTab::Evidence);
+    }
+    if challenge.is_some() || !actions.is_empty() {
+        push_tab(&mut tabs, PreparedTab::Actions);
+    }
+    if lease.is_some() || incident.is_some() {
+        push_tab(&mut tabs, PreparedTab::Systems);
+    }
+    if tabs.is_empty() {
+        push_tab(&mut tabs, PreparedTab::Raw);
+    }
+    tabs
+}
+
+fn push_tab(tabs: &mut Vec<PreparedTab>, tab: PreparedTab) {
+    if !tabs.contains(&tab) {
+        tabs.push(tab);
+    }
+}
+
+fn confidence(
+    attention: Option<&AttentionPacket>,
+    lease: Option<&Lease>,
+    challenge: Option<&ApprovalChallenge>,
+    evidence: &[JituxEvidenceRef],
+) -> f32 {
+    let mut confidence: f32 = 0.68;
+    if attention.is_some() {
+        confidence += 0.08;
+    }
+    if lease.is_some() {
+        confidence += 0.04;
+    }
+    if challenge.is_some() {
+        confidence += 0.04;
+    }
+    if !evidence.is_empty() {
+        confidence += 0.10;
+    }
+    confidence.clamp(0.0, 1.0)
+}
+
+fn freshness_ms(updated_at: DateTime<Utc>, now: DateTime<Utc>) -> Option<u64> {
+    let elapsed = now.signed_duration_since(updated_at).num_milliseconds();
+    Some(elapsed.max(0) as u64)
+}
+
+fn minutes_until(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> i64 {
+    expires_at.signed_duration_since(now).num_minutes().max(0)
 }
