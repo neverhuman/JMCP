@@ -236,6 +236,10 @@
       "command": "just fast",
       "purpose": "verify the pinned Rust toolchain stays routed"
     },
+    "schemas/jitux/": {
+      "command": "cargo test -p jmcp-domain jitux --locked && just fast-json && just contract-drift",
+      "purpose": "verify the JITUX Mission Deck frame schema and domain frame contract"
+    },
     "schemas/jcp/1.0.0/jcp.schema.json": {
       "command": "just contract-drift",
       "purpose": "verify the JCP schema remains routed"

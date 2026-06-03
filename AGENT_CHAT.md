@@ -570,3 +570,47 @@ speech/*, docs/*) — left for its owner.
 ## 2026-06-03T14:56:39Z - Codex (feature/aiux) - CLAIM: dirty WIP reconciliation only
 
 Claiming `/home/ubuntu/jmcp` for dirty WIP review/preservation only after publishing Jeryu PR #59. Scope is to identify and preserve or hand off voice/speech/AIUX WIP before any scheduler work. I will not implement scheduler/dispatcher changes in this claim, and I will not modify Rust crates, apps, package files, scripts, CI, schemas, or `tips/` except as needed to preserve the currently untracked `tips/aiux/` material.
+
+## 2026-06-03T15:01:29Z - Codex (feature/aiux) - SCOPE EXPANSION: Jankurai cap remediation
+
+Owner request expanded scope to remove caps/findings and get CI green across repos using Codex MCP agents only. Extending this JMCP claim from preservation-only to docs/control-plane Jankurai remediation for the current `feature/aiux` tree. Active JMCP findings to address first: `release-readiness-gap`, `missing-agent-readable-docs`, and related docs/context/boundary/data/supply-chain score findings. Still no scheduler implementation in this claim.
+
+## 2026-06-03T15:05:48Z - Codex (feature/aiux) - AIUX Mission Deck plan rewrite
+
+Claiming `/home/ubuntu/AIUX_MASTER_PLAN_CODEX.md` only, plus this append-only coordination log, to rewrite the AIUX master plan around the v2 Mission Deck as the first MVP. No Rust crates, cockpit app files, package files, scripts, CI, schemas, or `tips/` paths are claimed for implementation in this slice.
+
+## 2026-06-03T15:10:06Z - Codex (feature/aiux) - AIUX Mission Deck plan proof
+
+Rewrote `/home/ubuntu/AIUX_MASTER_PLAN_CODEX.md` as the canonical Mission Deck MVP plan. Changed paths: `/home/ubuntu/AIUX_MASTER_PLAN_CODEX.md` and `AGENT_CHAT.md`. Proof: direct content verification with `rtk rg` for Mission Deck primitives, JITUX endpoints including SSE and WebSocket, frame families, `PaneVM`, deterministic score factors, AGENT_CHAT requirements, and proof commands; `rtk wc -l /home/ubuntu/AIUX_MASTER_PLAN_CODEX.md`; `rtk ls -l /home/ubuntu/AIUX_MASTER_PLAN_CODEX.md`. No Rust/cockpit tests were run because this slice changed only planning/coordination text.
+
+## 2026-06-03T15:10:44Z - Codex (feature/aiux) - SCOPE EXPANSION: JMCP code-shape finding
+
+Full Jankurai audit after docs remediation reported caps=0 score=92 with one medium code-shape finding on `crates/jmcp-api/src/routes.rs`. Taking a narrow semantic split of route handlers into sibling `jmcp-api` modules only; no scheduler, dispatch, DB schema, or behavior changes intended.
+
+## 2026-06-03T15:13:40Z - Codex (feature/aiux) - AIUX implementation multi-agent launch
+
+User requested multiple Codex MCP agents, frequent commits, and frequent Jankurai audits while Claude may also help. Codex is coordinating AIUX Mission Deck implementation with disjoint lanes. Active sidecar agents are read-only explorers for cockpit frontend integration, backend JITUX/session surfaces, proof strategy, and collision risks. Local critical path starts with the JITUX contract/domain slice. Commits should be small and proof-backed; do not stage unrelated dirty docs/CI/API route-split work unless that slice explicitly claims it.
+
+## 2026-06-03T15:19:04Z - Codex (feature/aiux) - AIUX contract/domain proof
+
+Implemented the first JITUX Mission Deck contract/domain slice. Changed paths for this slice: `crates/jmcp-domain/src/jitux.rs`, `crates/jmcp-domain/src/jitux_tests.rs`, `crates/jmcp-domain/src/lib.rs`, `schemas/jitux/1.0.0/jitux-frame.schema.json`, `agent/owner-map.json`, `agent/test-map.json`, and this append-only log. Proof: `rtk cargo test -p jmcp-domain jitux --locked` (3 passed), `rtk cargo test -p jmcp-domain --locked` (10 passed), `rtk just fast-json`, `rtk just contract-drift`, and `rtk just score` (`score=92 raw=92 caps=0 findings=1`). Jankurai initially flagged missing schema routing and a Rust `Stale` symbol; both were fixed while preserving the wire value `stale`.
+
+## 2026-06-03T15:19:24Z - Claude (feature/aiux) - CLAIM: AIUX Mission Deck parallel build (2 Codex workers, isolated worktrees)
+
+Owner directed Claude to spin up multiple Codex agents to implement the canonical Mission Deck plan
+(/home/ubuntu/AIUX_MASTER_PLAN_CODEX.md). To avoid collision with the running Codex (which owns
+crates/jmcp-api route split + docs + plan), Claude is dispatching two AUTONOMOUS codex-exec workers in
+ISOLATED git worktrees on disjoint paths, with LOCAL-only commits (no push) and frequent jankurai audits:
+
+- Worker A (worktree /home/ubuntu/jmcp-worktrees/ws-now, branch aiux/ws-now-engine): NEW crate
+  crates/jmcp-now (contract/ranking/reads/scenes/projection + golden test) + root Cargo.toml workspace
+  member + arc-swap dep + one read-only AppState::event_watermark() in crates/jmcp-app/src/lib.rs.
+  Explicitly EXCLUDES crates/jmcp-api (Codex owns it). Proof -> crates/jmcp-now/PROOF.md.
+- Worker B (worktree /home/ubuntu/jmcp-worktrees/ws-deck, branch aiux/ws-deck-frontend): cockpit
+  Mission Deck under apps/cockpit/src/jitux/** + styles-deck.css + purple nav state + three/r3f/drei
+  deps (DataLoom background only). Must NOT regress voice latency. Proof -> apps/cockpit/JITUX_PROOF.md.
+
+Deferred until Codex releases jmcp-api and the contract lands: jmcp-api /now SSE+WS routes (WS-E) and
+voice<->deck wiring (WS-G). Command surface: cargo build/test -p jmcp-now; npm --workspace @jmcp/cockpit
+typecheck|test; jankurai audit. Claude integrates the worktree branches into feature/aiux and runs
+central jankurai. Owner: Claude. Will append proof + changed-paths before handing back.

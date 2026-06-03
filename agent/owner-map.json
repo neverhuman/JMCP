@@ -54,6 +54,7 @@
     "package.json": "tools",
     "paper/": "standard",
     "python/ai-service/": "ai",
+    "schemas/jitux/": "contracts",
     "schemas/jcp/1.0.0/jcp.schema.json": "contracts",
     "schemas/jpcm/1.0.0/jpcm.schema.json": "contracts",
     "schemas/repair-queue.schema.json": "agent",
