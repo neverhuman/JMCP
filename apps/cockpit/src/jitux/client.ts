@@ -1,7 +1,11 @@
 import { isJituxFrame } from "./guards";
 import type { JituxFrame } from "./types";
 
-const apiUrl = import.meta.env.VITE_JMCP_API_URL ?? "http://127.0.0.1:18877";
+// Reach the broker through the same-origin "/jmcp" vite proxy (rewrites to the
+// jmcpd API), exactly like the voice tools do. Hitting http://127.0.0.1:18877
+// directly is cross-origin from the cockpit dev server and the browser blocks it,
+// so the deck keeps retrying until live broker frames arrive.
+const apiUrl = import.meta.env.VITE_JMCP_API_URL ?? "/jmcp";
 const apiBase = apiUrl.replace(/\/+$/, "");
 
 export type OpenDeckSessionRequest = {

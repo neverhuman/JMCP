@@ -74,7 +74,7 @@ describe("JITUX client", () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:18877/jitux/sessions",
+      "/jmcp/jitux/sessions",
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -87,7 +87,7 @@ describe("JITUX client", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
 
     const close = subscribeToDeckFrames("/jitux/sessions/jitux_live/stream", (frame) => deckStore.applyFrames([frame]));
-    expect(FakeEventSource.instances[0]?.url).toBe("http://127.0.0.1:18877/jitux/sessions/jitux_live/stream");
+    expect(FakeEventSource.instances[0]?.url).toBe("/jmcp/jitux/sessions/jitux_live/stream");
 
     FakeEventSource.instances[0].emit("jitux.frame", deckPatch);
 

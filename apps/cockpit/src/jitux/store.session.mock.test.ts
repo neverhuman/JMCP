@@ -8,6 +8,7 @@ afterEach(() => {
   resetDeckStoreForTests();
   MockEventSource.reset();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function descriptorResponse(sessionId = "jitux_live"): Response {
@@ -48,7 +49,7 @@ describe("JITUX deck store session flow", () => {
 
     const snapshot = deckStore.getSnapshot();
     expect(snapshot.streamStatus).toBe("live");
-    expect(snapshot.caption).toBe("Live broker frames are driving the Mission Deck.");
+    expect(snapshot.caption).toBe("BROKER is driving the Mission Deck with live frames and ranked insights.");
     expect(snapshot.sessionId).toBe("jitux_live");
     expect(snapshot.focusPaneId).toBe("queue_blockers");
     expect(deckStore.rankedPanes()[0].id).toBe("queue_blockers");
@@ -67,11 +68,51 @@ describe("JITUX deck store session flow", () => {
 
     await waitFor(() =>
       expect(deckStore.getSnapshot().caption).toBe(
-        "Broker session unavailable; cached snapshot remains visible.",
+        "Broker session unavailable; retrying to keep the Mission Deck broker-driven.",
       ),
     );
     expect(deckStore.getSnapshot().streamStatus).toBe("degraded");
     expect(deckStore.rankedPanes()).toHaveLength(5);
+  });
+
+  it("retries a transient broker session failure and returns to live frames", async () => {
+    vi.useFakeTimers();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("", {
+          status: 500,
+        }),
+      )
+      .mockResolvedValueOnce(descriptorResponse("jitux_retry"));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+    act(() => deckStore.igniteQueueBlockers(createFixtureRuntime()));
+
+    const stop = deckStore.startLiveQueueBlockers();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(deckStore.getSnapshot().caption).toBe(
+      "Broker session unavailable; retrying to keep the Mission Deck broker-driven.",
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+      await Promise.resolve();
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(MockEventSource.instances).toHaveLength(1);
+
+    const frames = createQueueBlockerFrames(createFixtureRuntime(), "jitux_retry");
+    act(() => MockEventSource.instances[0].emitFrame(frames[0]));
+
+    expect(deckStore.getSnapshot().caption).toBe(
+      "BROKER is driving the Mission Deck with live frames and ranked insights.",
+    );
+
+    stop();
   });
 
   it("stops the mock stream on barge-in and ignores later frames", async () => {

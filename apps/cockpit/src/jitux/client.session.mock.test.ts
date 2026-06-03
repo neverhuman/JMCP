@@ -38,7 +38,7 @@ describe("JITUX client session helpers", () => {
       wsUrl: "/jitux/sessions/jitux_live/ws",
     });
     expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:18877/jitux/sessions",
+      "/jmcp/jitux/sessions",
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -85,6 +85,33 @@ describe("JITUX client session helpers", () => {
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  // Regression: a cross-origin http://127.0.0.1:18877 URL is blocked by the browser
+  // from the cockpit dev origin and surfaced as "Broker session unavailable; cached
+  // snapshot remains visible." The deck must reach the broker via the same-origin
+  // /jmcp proxy so live broker frames actually drive the deck.
+  it("reaches the broker via the same-origin /jmcp proxy, never a cross-origin URL", async () => {
+    const fetch = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(
+        response({
+          sessionId: "jitux_live",
+          streamUrl: "/jitux/sessions/jitux_live/stream",
+          wsUrl: "/jitux/sessions/jitux_live/ws",
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await openDeckSession({ prompt: "queue", source: "deck" });
+    const postUrl = fetch.mock.calls[0]?.[0] ?? "";
+    expect(postUrl).toBe("/jmcp/jitux/sessions");
+    expect(postUrl).not.toMatch(/^https?:\/\//);
+
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+    subscribeToDeckFrames("/jitux/sessions/jitux_live/stream", () => undefined);
+    const streamUrl = MockEventSource.instances[0]?.url ?? "";
+    expect(streamUrl).toBe("/jmcp/jitux/sessions/jitux_live/stream");
+    expect(streamUrl).not.toMatch(/^https?:\/\//);
+  });
+
   it("subscribes to canonical frames in order and tears down cleanly", () => {
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 
@@ -95,7 +122,7 @@ describe("JITUX client session helpers", () => {
     });
 
     expect(MockEventSource.instances[0]?.url).toBe(
-      "http://127.0.0.1:18877/jitux/sessions/jitux_live/stream",
+      "/jmcp/jitux/sessions/jitux_live/stream",
     );
     MockEventSource.instances[0].emitFrame(frames[0]);
     MockEventSource.instances[0].emitFrame(frames[1]);

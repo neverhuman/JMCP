@@ -57,10 +57,72 @@ export function createDeckTrace(runtime: RuntimeState, status: DeckSessionTraceP
 export function createDeckLiveSession(callbacks: DeckLiveSessionCallbacks) {
   let abortController: AbortController | null = null;
   let closeStream: (() => void) | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let token = 0;
+
+  const clearRetryTimer = () => {
+    if (retryTimer === null) {
+      return;
+    }
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  };
+
+  const scheduleRetry = (currentToken: number, controller: AbortController) => {
+    if (retryTimer !== null || controller.signal.aborted || currentToken !== token) {
+      return;
+    }
+    retryTimer = window.setTimeout(() => {
+      retryTimer = null;
+      if (controller.signal.aborted || currentToken !== token) {
+        return;
+      }
+      void attemptOpen(currentToken, controller);
+    }, 1500);
+  };
+
+  const attemptOpen = async (currentToken: number, controller: AbortController) => {
+    closeStream?.();
+    closeStream = null;
+    callbacks.onOpening();
+
+    try {
+      const descriptor = await openDeckSession(QUEUE_BLOCKERS_DECK_SESSION_REQUEST, controller.signal);
+      if (controller.signal.aborted || currentToken !== token) return;
+      let receivedFrame = false;
+      publishDeckSessionDescriptor({ sessionId: descriptor.sessionId, streamUrl: descriptor.streamUrl });
+      callbacks.onOpen(descriptor);
+      const close = subscribeToDeckFrames(
+        descriptor.streamUrl,
+        (frame) => {
+          if (controller.signal.aborted || currentToken !== token) return;
+          receivedFrame = true;
+          clearRetryTimer();
+          callbacks.onFrame(frame, descriptor);
+        },
+        () => {
+          if (controller.signal.aborted || currentToken !== token || receivedFrame) return;
+          closeStream?.();
+          closeStream = null;
+          callbacks.onStreamUnavailable();
+          scheduleRetry(currentToken, controller);
+        },
+      );
+      if (controller.signal.aborted || currentToken !== token) {
+        close();
+        return;
+      }
+      closeStream = close;
+    } catch (error: unknown) {
+      if (controller.signal.aborted || currentToken !== token || isAbortError(error)) return;
+      callbacks.onSessionUnavailable();
+      scheduleRetry(currentToken, controller);
+    }
+  };
 
   const stop = () => {
     token += 1;
+    clearRetryTimer();
     abortController?.abort();
     abortController = null;
     closeStream?.();
@@ -73,36 +135,7 @@ export function createDeckLiveSession(callbacks: DeckLiveSessionCallbacks) {
       const currentToken = ++token;
       const controller = new AbortController();
       abortController = controller;
-      callbacks.onOpening();
-
-      void openDeckSession(QUEUE_BLOCKERS_DECK_SESSION_REQUEST, controller.signal)
-        .then((descriptor) => {
-          if (controller.signal.aborted || currentToken !== token) return;
-          let receivedFrame = false;
-          publishDeckSessionDescriptor({ sessionId: descriptor.sessionId, streamUrl: descriptor.streamUrl });
-          callbacks.onOpen(descriptor);
-          const close = subscribeToDeckFrames(
-            descriptor.streamUrl,
-            (frame) => {
-              if (controller.signal.aborted || currentToken !== token) return;
-              receivedFrame = true;
-              callbacks.onFrame(frame, descriptor);
-            },
-            () => {
-              if (controller.signal.aborted || currentToken !== token || receivedFrame) return;
-              callbacks.onStreamUnavailable();
-            },
-          );
-          if (controller.signal.aborted || currentToken !== token) {
-            close();
-            return;
-          }
-          closeStream = close;
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted || currentToken !== token || isAbortError(error)) return;
-          callbacks.onSessionUnavailable();
-        });
+      void attemptOpen(currentToken, controller);
 
       return stop;
     },

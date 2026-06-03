@@ -374,7 +374,7 @@ function createStore() {
         streamUrl: null,
         wsUrl: null,
         trace: createDeckTrace(runtime, "degraded", "frontend"),
-        caption: "Cached snapshot is visible while the broker session opens.",
+        caption: "Broker session opening; waiting for live frames to drive the Mission Deck.",
       });
     },
     onOpen: (descriptor) => {
@@ -383,7 +383,7 @@ function createStore() {
         streamStatus: "opening",
         streamUrl: descriptor.streamUrl,
         wsUrl: descriptor.wsUrl,
-        caption: `Broker session ${descriptor.sessionId} opened; cached snapshot remains visible until live frames arrive.`,
+        caption: `Broker session ${descriptor.sessionId} opened; live broker frames are about to drive the Mission Deck.`,
       });
     },
     onFrame: (frame, descriptor) => {
@@ -395,11 +395,13 @@ function createStore() {
         streamUrl: descriptor.streamUrl,
         wsUrl: descriptor.wsUrl,
         trace: runtime ? createDeckTrace(runtime, "ready", "projection") : state.trace,
-        caption: "Live broker frames are driving the Mission Deck.",
+        caption: "BROKER is driving the Mission Deck with live frames and ranked insights.",
       });
     },
-    onSessionUnavailable: () => markStreamDegraded("Broker session unavailable; cached snapshot remains visible."),
-    onStreamUnavailable: () => markStreamDegraded("Broker stream unavailable; cached snapshot remains visible."),
+    onSessionUnavailable: () =>
+      markStreamDegraded("Broker session unavailable; retrying to keep the Mission Deck broker-driven."),
+    onStreamUnavailable: () =>
+      markStreamDegraded("Broker stream unavailable; retrying to keep the Mission Deck broker-driven."),
   });
 
   return {
