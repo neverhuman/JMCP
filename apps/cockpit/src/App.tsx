@@ -11,7 +11,6 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { views } from "./fixtures";
-import { useDeckSnapshot } from "./jitux/store";
 import { createFixtureRuntime, hasValidEventBatch, loadRuntime, type RuntimeState } from "./runtime";
 import {
   ApprovalsView,
@@ -43,7 +42,6 @@ const icons = {
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("now");
   const [runtime, setRuntime] = useState<RuntimeState>(() => createFixtureRuntime());
-  const deckNavState = useDeckSnapshot((state) => state.navState);
   const currentView = useMemo(
     () => views.find((view) => view.id === activeView) ?? views[0],
     [activeView],
@@ -112,19 +110,10 @@ function App() {
         <nav className="nav-list">
           {views.map((view) => {
             const Icon = icons[view.id];
-            const navClass = [
-              "nav-item",
-              view.id,
-              view.id === activeView ? "active" : "",
-              view.id === "now" && deckNavState !== "idle" ? "agent-active" : "",
-              view.id === "now" ? `takeover-${deckNavState}` : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
             return (
               <button
                 key={view.id}
-                className={navClass}
+                className={view.id === activeView ? "nav-item active" : "nav-item"}
                 type="button"
                 onClick={() => setActiveView(view.id)}
                 title={view.description}

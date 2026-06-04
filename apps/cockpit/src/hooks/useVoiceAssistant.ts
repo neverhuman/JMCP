@@ -1,22 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { synthesize, transcribe, type ChatMessage } from "../lib/speechClient";
-import { micSupported, requestMicrophoneStream } from "../lib/microphone";
 import {
-  MIN_SPEECH_MS,
-  RMS_THRESHOLD,
-  SILENCE_MS,
-  SYSTEM_PROMPT,
-  WAKE_WORDS,
-  isAbortError,
-  preferredAudioType,
-  stripWakeWord,
-} from "../lib/voiceAssistantConfig";
-import { runVoiceTurn } from "../lib/voiceAssistantTurn";
-import { deckStore } from "../jitux/store";
-import type { VoiceAssistantApi, VoiceState } from "../lib/voiceAssistantTypes";
-
-export { stripWakeWord };
-export type { VoiceAssistantApi, VoiceState };
+  VOICE_MODEL,
+  reasonStream,
+  synthesize,
+  transcribe,
+  type ChatMessage,
+  type ToolCallFunction,
+} from "../lib/speechClient";
+import { micSupported, requestMicrophoneStream } from "../lib/microphone";
+import { VOICE_TOOL_SPECS, executeVoiceTool } from "../lib/voiceTools";
 
 // Always-listening, privacy-first voice assistant. The mic runs continuously in
 // the browser; a lightweight energy VAD segments speech; each utterance is
@@ -24,10 +16,86 @@ export type { VoiceAssistantApi, VoiceState };
 // is active. No audio or text leaves the machine. Barge-in cancels stale
 // reasoning, queued TTS, and current playback the moment you start talking again.
 
+export type VoiceState =
+  | "off"
+  | "listening"
+  | "armed" // retained for compatibility with older wake-word UI states
+  | "transcribing"
+  | "thinking"
+  | "speaking"
+  | "error";
+
+export interface VoiceAssistantApi {
+  state: VoiceState;
+  supported: boolean;
+  transcript: string;
+  reply: string;
+  error: string | null;
+  wakeWords: string[];
+  start: () => Promise<void>;
+  stop: () => void;
+  sendText: (text: string) => Promise<void>;
+}
+
+const WAKE_WORDS = ["hey jmcp", "hey jim cp", "jmcp", "computer"];
+const RMS_THRESHOLD = 0.018; // speech vs silence
+const SILENCE_MS = 350; // trailing silence that ends an utterance (snappy turn-taking)
+const FIRST_CHUNK_CHARS = 28; // flush the opening phrase fast for low time-to-first-word
+const MIN_SPEECH_MS = 175; // ignore blips
+const SYSTEM_PROMPT =
+  "You are JMCP, a concise local voice assistant running on the operator's own machine. " +
+  "You can call tools to read JMCP status and to take actions. Keep spoken answers to one " +
+  "or two short sentences. For any tool that CHANGES state (submitting or starting work), " +
+  "first say what you will do and ask the operator to confirm out loud; only call it with " +
+  "confirmed=true after they agree. Do not read raw JSON or long ids aloud unless asked.";
+const MAX_TOOL_HOPS = 4; // cap tool round-trips per turn so a loop can't run away
+const PREFERRED_AUDIO_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/ogg;codecs=opus",
+  "audio/webm",
+  "audio/ogg",
+];
+
 type QueuedSpeech = {
   audio: Promise<Blob | null>;
   signal?: AbortSignal;
 };
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
+}
+
+function preferredAudioType(): string | undefined {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return undefined;
+  }
+  return PREFERRED_AUDIO_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+export function stripWakeWord(text: string): { triggered: boolean; command: string } {
+  for (const wake of WAKE_WORDS) {
+    const pattern = new RegExp(`(^|\\b)${escapeRegExp(wake)}(?=$|[\\s,.:;-])`, "i");
+    const match = pattern.exec(text);
+    if (match !== null) {
+      const prefix = match[1] ?? "";
+      const index = match.index + prefix.length;
+      const after = text.slice(index + wake.length).replace(/^[\s,.:;-]+/, "");
+      return { triggered: true, command: after.trim() };
+    }
+  }
+  return { triggered: false, command: "" };
+}
 
 export function useVoiceAssistant(): VoiceAssistantApi {
   const supported = micSupported();
@@ -142,20 +210,82 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     const turnAbort = new AbortController();
     turnAbortRef.current = turnAbort;
     setBoth("thinking");
+    historyRef.current.push({ role: "user", content: command });
     speechQueueRef.current = [];
-    // Hand the turn to the deck the instant it starts: purple takeover + panes fly
-    // in, and each reasoning step / tool call reshuffles focus — so the deck visibly
-    // moves at the speed of the agent's reasoning, before it speaks.
-    deckStore.beginAgentTurn(command);
+    let pending = "";
+    let firstChunk = true;
+    // Speak in clause-sized chunks (split on , . ! ? : ;) so the opening phrase
+    // is voiced the instant it streams in — minimal time-to-first-word. When a
+    // clause runs long with no punctuation, break at the last word boundary.
+    const flushChunks = (force: boolean) => {
+      const chunks = pending.match(/[^,.!?:;]*[,.!?:;]+\s*/g);
+      if (chunks !== null) {
+        let consumed = 0;
+        for (const chunk of chunks) {
+          enqueueSpeech(chunk, turnAbort.signal);
+          consumed += chunk.length;
+        }
+        pending = pending.slice(consumed);
+        firstChunk = false;
+      }
+      if (force) {
+        const lastSpace = pending.lastIndexOf(" ");
+        if (lastSpace > 12) {
+          enqueueSpeech(pending.slice(0, lastSpace), turnAbort.signal);
+          pending = pending.slice(lastSpace + 1);
+          firstChunk = false;
+        }
+      }
+    };
+    const onDelta = (delta: string) => {
+      pending += delta;
+      if (/[,.!?:;]/.test(pending)) {
+        flushChunks(false);
+      } else if (pending.length > (firstChunk ? FIRST_CHUNK_CHARS : 120)) {
+        flushChunks(true);
+      }
+    };
     try {
-      const lastText = await runVoiceTurn({
-        command,
-        history: historyRef.current,
-        signal: turnAbort.signal,
-        enqueueSpeech,
-        setThinking: () => setBoth("thinking"),
-        onAgentStep: (label) => deckStore.pulseAgentStep(label),
-      });
+      let lastText = "";
+      // Tool loop: the model may call JMCP tools before it speaks the final answer.
+      // Each hop streams content (spoken live) and/or tool calls; we run the tools,
+      // feed the results back, and continue until it answers with no further calls.
+      for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+        pending = "";
+        firstChunk = true;
+        const result = await reasonStream(
+          historyRef.current,
+          onDelta,
+          turnAbort.signal,
+          VOICE_MODEL,
+          VOICE_TOOL_SPECS,
+        );
+        enqueueSpeech(pending, turnAbort.signal);
+        pending = "";
+        lastText = result.text;
+        if (result.toolCalls.length === 0) {
+          historyRef.current.push({ role: "assistant", content: result.text });
+          break;
+        }
+        // Record the assistant's tool-call turn, run each tool, feed results back.
+        const toolCalls: ToolCallFunction[] = result.toolCalls.map((call) => ({
+          id: call.id,
+          type: "function",
+          function: { name: call.name, arguments: call.arguments },
+        }));
+        historyRef.current.push({ role: "assistant", content: result.text, tool_calls: toolCalls });
+        setBoth("thinking");
+        for (const call of result.toolCalls) {
+          const output = await executeVoiceTool(call.name, call.arguments, turnAbort.signal);
+          historyRef.current.push({ role: "tool", tool_call_id: call.id, content: output });
+        }
+      }
+      if (historyRef.current.length > 13) {
+        historyRef.current = [
+          historyRef.current[0],
+          ...historyRef.current.slice(historyRef.current.length - 12),
+        ];
+      }
       setReply(lastText);
       if (lastText.length === 0) enqueueSpeech("Sorry, I did not catch that.", turnAbort.signal);
     } catch (err) {
@@ -211,9 +341,7 @@ export function useVoiceAssistant(): VoiceAssistantApi {
     chunksRef.current = [];
     const audioType = preferredAudioType();
     const recorder =
-      audioType.kind === "browser_default"
-        ? new MediaRecorder(stream)
-        : new MediaRecorder(stream, { mimeType: audioType.mimeType });
+      audioType === undefined ? new MediaRecorder(stream) : new MediaRecorder(stream, { mimeType: audioType });
     recorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
