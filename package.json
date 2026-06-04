@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "workspaces": [
     "apps/cockpit",
+    "apps/web",
     "packages/ux-qa"
   ],
   "scripts": {
