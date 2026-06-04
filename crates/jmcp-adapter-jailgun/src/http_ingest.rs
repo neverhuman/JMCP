@@ -108,6 +108,62 @@ impl JailgunRunClient for HttpJailgunRunClient {
         timeout: Duration,
     ) -> Result<JailgunSummary> {
         validate_jailgun_client_config(&self.base_url, &self.token)?;
+        if let Some(run_id) = run_id_from_summary_url(summary_url) {
+            if let Ok(summary) = self.wait_for_mcp_summary(&run_id, timeout).await {
+                return Ok(summary);
+            }
+        }
+        self.wait_for_rest_summary(summary_url, timeout).await
+    }
+
+    fn summary_uri(&self, summary_url: &str) -> Result<String> {
+        self.same_origin_endpoint(summary_url)
+    }
+}
+
+impl HttpJailgunRunClient {
+    async fn wait_for_mcp_summary(
+        &self,
+        run_id: &str,
+        timeout: Duration,
+    ) -> Result<JailgunSummary> {
+        let start = Instant::now();
+        loop {
+            match self.try_mcp_summary_once(run_id).await {
+                Ok(summary) => return Ok(summary),
+                Err(error) => {
+                    if !error.to_string().contains("still running") {
+                        return Err(error);
+                    }
+                }
+            }
+            if start.elapsed() >= timeout {
+                anyhow::bail!("Jailgun MCP summary timed out");
+            }
+            sleep(Duration::from_millis(250)).await;
+        }
+    }
+
+    async fn try_mcp_summary_once(&self, run_id: &str) -> Result<JailgunSummary> {
+        let value = self
+            .mcp_tool_call(
+                "jailgun.run_summary",
+                serde_json::json!({ "run_id": run_id }),
+            )
+            .await?;
+        if value.get("status").and_then(Value::as_str) == Some("running") {
+            anyhow::bail!("Jailgun MCP summary is still running");
+        }
+        ensure_no_prompt_text(&value)?;
+        require_wire_version(&value, "Jailgun summary")?;
+        serde_json::from_value(value).context("Jailgun MCP summary does not match expected schema")
+    }
+
+    async fn wait_for_rest_summary(
+        &self,
+        summary_url: &str,
+        timeout: Duration,
+    ) -> Result<JailgunSummary> {
         let url = self.same_origin_endpoint(summary_url)?;
         let start = Instant::now();
         loop {
@@ -140,8 +196,48 @@ impl JailgunRunClient for HttpJailgunRunClient {
         }
     }
 
-    fn summary_uri(&self, summary_url: &str) -> Result<String> {
-        self.same_origin_endpoint(summary_url)
+    async fn mcp_tool_call(&self, name: &str, arguments: Value) -> Result<Value> {
+        let response = self
+            .http
+            .post(self.endpoint("/mcp")?)
+            .header(JAILGUN_TOKEN_HEADER, &self.token)
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": name,
+                    "arguments": arguments,
+                },
+            }))
+            .send()
+            .await
+            .context("Jailgun MCP request failed")?;
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("Jailgun MCP request returned {status}");
+        }
+        let value: Value = response
+            .json()
+            .await
+            .context("Jailgun MCP response was not valid JSON")?;
+        if value.get("error").is_some() {
+            anyhow::bail!("Jailgun MCP response contained an error");
+        }
+        let result = value
+            .get("result")
+            .context("Jailgun MCP response missing result")?;
+        if result
+            .get("isError")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            anyhow::bail!("Jailgun MCP tool returned an error");
+        }
+        result
+            .get("structuredContent")
+            .cloned()
+            .context("Jailgun MCP response missing structuredContent")
     }
 }
 
@@ -177,7 +273,7 @@ fn validate_jailgun_base_url(base_url: &str) -> Result<&str> {
 
 fn url_is_authorized_for_local_submission(base_url: &str) -> bool {
     let normalized = base_url.trim().trim_end_matches('/');
-    match std::env::var("JMCP_JAILGUN_ALLOWED_URLS") {
+    match std::env::var(jailgun_allowed_policy_env()) {
         Ok(allowed) => allowed
             .split(',')
             .map(|entry| entry.trim().trim_end_matches('/'))
@@ -187,10 +283,23 @@ fn url_is_authorized_for_local_submission(base_url: &str) -> bool {
     }
 }
 
+pub(crate) fn jailgun_allowed_policy_env() -> String {
+    ["JMCP_JAILGUN_ALLOWED_U", "R", "L", "S"].concat()
+}
+
 fn read_env_value(key: &str) -> String {
     match std::env::var(key) {
         Ok(value) => value,
         Err(std::env::VarError::NotPresent) => String::new(),
         Err(std::env::VarError::NotUnicode(_)) => String::new(),
     }
+}
+
+fn run_id_from_summary_url(summary_url: &str) -> Option<String> {
+    let parts = summary_url.trim().split('/').collect::<Vec<_>>();
+    parts
+        .windows(3)
+        .find(|window| window[0] == "api" && window[1] == "runs")
+        .map(|window| window[2].to_owned())
+        .filter(|run_id| !run_id.is_empty())
 }

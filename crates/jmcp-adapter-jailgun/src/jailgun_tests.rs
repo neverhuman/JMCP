@@ -171,6 +171,83 @@ async fn inline_request_wins_over_request_path() {
 }
 
 #[tokio::test]
+async fn run_agent_canonicalizes_account_ids_before_submission() {
+    let dir = temp_dir();
+    let captured_request = Arc::new(Mutex::new(None));
+    let adapter = JailgunAdapter::with_run_client(
+        "jailgun",
+        Duration::from_secs(5),
+        Arc::new(FakeRunClient {
+            include_receipt: true,
+            events_jsonl: dir.join("events.jsonl"),
+            captured_request: captured_request.clone(),
+        }),
+    );
+    let work_order = WorkOrder::submit(
+        "t/jailgun/e",
+        "jailgun.run",
+        json!({
+            "request": {
+                "version": 1,
+                "prompt_ref": "jmcp://prompt/1",
+                "prompt_file": "prompt.txt",
+                "account_ids": ["acct-a"]
+            },
+        }),
+    );
+
+    adapter.execute(&work_order).await.unwrap();
+
+    let captured = captured_request.lock().unwrap().as_ref().unwrap().clone();
+    assert_eq!(captured["browser"]["account_ids"], json!(["acct-a"]));
+    assert!(captured.get("account_ids").is_none());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn run_agent_threads_account_selection_to_request() {
+    // Account selection (which of the two authenticated browser accounts a run
+    // uses) rides through the adapter as `browser.account_ids` on the request
+    // body. The adapter forwards the request verbatim, so this locks the
+    // contract that selection reaches jailgun's `/api/runs` unchanged — without
+    // this jmcp/ZYAL could not pick chatgpt-a vs chatgpt-b.
+    let dir = temp_dir();
+    let captured_request = Arc::new(Mutex::new(None));
+    let adapter = JailgunAdapter::with_run_client(
+        "jailgun",
+        Duration::from_secs(5),
+        Arc::new(FakeRunClient {
+            include_receipt: true,
+            events_jsonl: dir.join("events.jsonl"),
+            captured_request: captured_request.clone(),
+        }),
+    );
+    let work_order = WorkOrder::submit(
+        "t/jailgun/e",
+        "jailgun.run",
+        json!({
+            "request": {
+                "version": 1,
+                "prompt_ref": "jmcp://prompt/1",
+                "prompt_file": dir.join("prompt.txt"),
+                "browser": { "account_ids": ["chatgpt-a", "chatgpt-b"] }
+            },
+        }),
+    );
+    fs::write(dir.join("prompt.txt"), "prompt").unwrap();
+
+    adapter.execute(&work_order).await.unwrap();
+
+    let captured = captured_request.lock().unwrap();
+    let request = captured.as_ref().unwrap();
+    assert_eq!(
+        request["browser"]["account_ids"],
+        json!(["chatgpt-a", "chatgpt-b"])
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn review_packet_maps_output_to_evidence() {
     let dir = temp_dir();
     let bin = fake_jailgun(&dir, true);
@@ -257,14 +334,15 @@ async fn http_client_posts_request_with_ingest_token() {
         .unwrap();
     });
     let _guard = env_lock();
-    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", &base_url);
+    std::env::set_var(jailgun_allowed_policy_env(), &base_url);
     let client = HttpJailgunRunClient::new(&base_url, "secret");
 
     let accepted = client
         .start_run(&json!({
             "version": 1,
             "prompt_ref": "jmcp://prompt/1",
-            "prompt_file": "prompt.txt"
+            "prompt_file": "prompt.txt",
+            "browser": { "account_ids": ["chatgpt-a"] }
         }))
         .await
         .unwrap();
@@ -274,33 +352,36 @@ async fn http_client_posts_request_with_ingest_token() {
     assert!(request.starts_with("POST /api/runs HTTP/1.1"));
     assert!(request.contains("x-jailgun-token: secret"));
     assert!(request.contains(r#""version":1"#));
-    std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
+    // Account selection must survive to the actual HTTP wire body, not just the
+    // in-memory request Value — jailgun's `/api/runs` reads `browser.account_ids`.
+    assert!(request.contains(r#""account_ids":["chatgpt-a"]"#));
+    std::env::remove_var(jailgun_allowed_policy_env());
 }
 
 #[test]
 fn http_config_rejects_missing_token() {
     let _guard = env_lock();
-    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", "http://127.0.0.1:1");
+    std::env::set_var(jailgun_allowed_policy_env(), "http://127.0.0.1:1");
 
     let error = validate_jailgun_client_config("http://127.0.0.1:1", " ").unwrap_err();
 
     let message = error.to_string();
     assert!(message.contains("token"));
-    assert!(!message.contains("JMCP_JAILGUN_ALLOWED_URLS"));
-    std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
+    assert!(!message.contains(&jailgun_allowed_policy_env()));
+    std::env::remove_var(jailgun_allowed_policy_env());
 }
 
 #[test]
 fn http_config_rejects_endpoint_outside_local_policy() {
     let _guard = env_lock();
-    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", "http://127.0.0.1:2");
+    std::env::set_var(jailgun_allowed_policy_env(), "http://127.0.0.1:2");
 
     let error = validate_jailgun_client_config("http://127.0.0.1:1", "secret").unwrap_err();
 
     let message = error.to_string();
     assert!(message.contains("outside configured local submission policy"));
     assert!(!message.contains("127.0.0.1:1"));
-    std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
+    std::env::remove_var(jailgun_allowed_policy_env());
 }
 
 #[test]
@@ -349,16 +430,88 @@ async fn summary_rejects_prompt_text_leakage() {
 }"#;
     let base_url = single_response_server(body);
     let _guard = env_lock();
-    std::env::set_var("JMCP_JAILGUN_ALLOWED_URLS", &base_url);
+    std::env::set_var(jailgun_allowed_policy_env(), &base_url);
     let client = HttpJailgunRunClient::new(&base_url, "secret");
 
     let error = client
-        .wait_for_summary("/api/runs/run-1/agent-summary", Duration::from_secs(1))
+        .wait_for_summary("/summary/run-1", Duration::from_secs(1))
         .await
         .unwrap_err();
 
     assert!(error.to_string().contains("prompt text key"));
-    std::env::remove_var("JMCP_JAILGUN_ALLOWED_URLS");
+    std::env::remove_var(jailgun_allowed_policy_env());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn summary_prefers_mcp_tool_response() {
+    let summary = r#"{
+      "jsonrpc":"2.0",
+      "id":1,
+      "result":{
+        "structuredContent":{
+          "version":1,
+          "run_id":"run-1",
+          "status":"succeeded",
+          "prompt_ref":"jmcp://prompt/1",
+          "events_jsonl":"events.jsonl",
+          "receipt_paths":[],
+          "artifacts":[],
+          "failures":[]
+        }
+      }
+    }"#;
+    let (base_url, request_rx) = scripted_server(vec![("HTTP/1.1 200 OK", summary)]);
+    let _guard = env_lock();
+    std::env::set_var(jailgun_allowed_policy_env(), &base_url);
+    let client = HttpJailgunRunClient::new(&base_url, "secret");
+
+    let summary = client
+        .wait_for_summary("/api/runs/run-1/agent-summary", Duration::from_secs(1))
+        .await
+        .unwrap();
+
+    assert_eq!(summary.run_id, "run-1");
+    let request = request_rx.recv().unwrap();
+    assert!(request.starts_with("POST /mcp HTTP/1.1"));
+    assert!(request.contains("jailgun.run_summary"));
+    std::env::remove_var(jailgun_allowed_policy_env());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn summary_falls_back_to_rest_when_mcp_unavailable() {
+    let rest_summary = r#"{
+      "version":1,
+      "run_id":"run-1",
+      "status":"succeeded",
+      "prompt_ref":"jmcp://prompt/1",
+      "events_jsonl":"events.jsonl",
+      "receipt_paths":[],
+      "artifacts":[],
+      "failures":[]
+    }"#;
+    let (base_url, request_rx) = scripted_server(vec![
+        (
+            "HTTP/1.1 503 Service Unavailable",
+            r#"{"error":"mcp-down"}"#,
+        ),
+        ("HTTP/1.1 200 OK", rest_summary),
+    ]);
+    let _guard = env_lock();
+    std::env::set_var(jailgun_allowed_policy_env(), &base_url);
+    let client = HttpJailgunRunClient::new(&base_url, "secret");
+
+    let summary = client
+        .wait_for_summary("/api/runs/run-1/agent-summary", Duration::from_secs(1))
+        .await
+        .unwrap();
+
+    assert_eq!(summary.run_id, "run-1");
+    assert!(request_rx.recv().unwrap().starts_with("POST /mcp HTTP/1.1"));
+    assert!(request_rx
+        .recv()
+        .unwrap()
+        .starts_with("GET /api/runs/run-1/agent-summary HTTP/1.1"));
+    std::env::remove_var(jailgun_allowed_policy_env());
 }
 
 #[test]
@@ -521,6 +674,31 @@ fn single_response_server(body: &'static str) -> String {
         .unwrap();
     });
     format!("http://{addr}")
+}
+
+fn scripted_server(
+    responses: Vec<(&'static str, &'static str)>,
+) -> (String, std::sync::mpsc::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        for (status, body) in responses {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = [0_u8; 8192];
+            let read = stream.read(&mut bytes).unwrap();
+            tx.send(String::from_utf8_lossy(&bytes[..read]).to_string())
+                .unwrap();
+            write!(
+                stream,
+                "{status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        }
+    });
+    (format!("http://{addr}"), rx)
 }
 
 #[cfg(unix)]

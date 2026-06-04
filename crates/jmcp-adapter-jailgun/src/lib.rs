@@ -26,7 +26,7 @@ use protocol::run_agent_request;
 use review_packet::{review_packet_evidence, review_packet_request};
 
 #[cfg(test)]
-pub(crate) use http_ingest::validate_jailgun_client_config;
+pub(crate) use http_ingest::{jailgun_allowed_policy_env, validate_jailgun_client_config};
 pub(crate) use http_ingest::{HttpJailgunRunClient, JailgunRunClient};
 #[cfg(test)]
 pub(crate) use model::{JailgunAcceptedRun, JailgunArtifact, JailgunSummary};
